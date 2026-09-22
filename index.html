@@ -288,10 +288,6 @@
   .tree-map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
   .tree-map-svg line { stroke: var(--locked); stroke-width: 2; }
   .tree-map-svg line.active { stroke: var(--accent); stroke-width: 3; }
-  /* spider-web rings on the reincarnation panel: curved (not straight) threads circling the core,
-     drawn with the exact same weight/opacity as the spokes — real structural lines, not a faint overlay */
-  .tree-map-svg path.web-strand { fill: none; stroke: var(--locked); stroke-width: 2; }
-  .tree-map-svg path.web-strand.active { stroke: var(--accent); stroke-width: 3; }
   .tree-map-node {
     position: absolute; transform: translate(-50%, -50%); width: 84px; text-align: center;
     border-radius: 10px; padding: 6px 5px; font-size: 10px; cursor: default;
@@ -968,34 +964,6 @@
   const PANEL_SPECIAL_STEP = 220;
   Object.assign(PANEL_POS, spiralChain(PANEL_SPECIALS.map((s) => s.id), PANEL_CORE, PANEL_SPECIAL_ANGLE, 0, PANEL_SPECIAL_STEP, PANEL_SPECIAL_STEP));
 
-  // spider-web rings: every branch that shares the PANEL_STEP radius scale (the 5 categories plus
-  // the shop chain — 6 spokes, evenly spaced) gets connected to its angular neighbor at each tier
-  // it has a node for, forming concentric polygons around the core — straight spokes (above) plus
-  // these rings is exactly a web's radial threads + circular threads. A strand lights up once both
-  // ends are owned. Branches shorter than the ring's tier (the shop chain only goes to 4) simply
-  // drop out of that ring, so the remaining spokes close the gap directly.
-  const PANEL_WEB_BRANCHES = [
-    PANEL_CATEGORIES.find((c) => c.id === "panelAtk"),
-    PANEL_CATEGORIES.find((c) => c.id === "panelGold"),
-    PANEL_CATEGORIES.find((c) => c.id === "panelStartPoints"),
-    PANEL_CATEGORIES.find((c) => c.id === "panelBuff"),
-    PANEL_CATEGORIES.find((c) => c.id === "panelCritDmg"),
-    PANEL_SHOP_CHAIN,
-  ];
-  function panelWebStrands() {
-    const maxTier = Math.max(...PANEL_WEB_BRANCHES.map((b) => b.maxLevel));
-    const strands = [];
-    for (let tier = 1; tier <= maxTier; tier++) {
-      const present = PANEL_WEB_BRANCHES.filter((b) => tier <= b.maxLevel);
-      if (present.length < 2) continue;
-      for (let i = 0; i < present.length; i++) {
-        const a = present[i];
-        const b = present[(i + 1) % present.length];
-        strands.push({ a: PANEL_POS[a.id + "_" + tier], b: PANEL_POS[b.id + "_" + tier], active: panelLevel(a) >= tier && panelLevel(b) >= tier });
-      }
-    }
-    return strands;
-  }
 
   const PANEL_EDGE_PAD = 90;
   const { width: PANEL_CANVAS_WIDTH, height: PANEL_CANVAS_HEIGHT } = fitCanvasToPositions(PANEL_POS, PANEL_EDGE_PAD);
@@ -1898,22 +1866,6 @@
       line.setAttribute("y2", to.y);
       if (shopUnlockedCount() >= i + 1) line.setAttribute("class", "active");
       svg.appendChild(line);
-    });
-    // spider-web rings: curved (quadratic-bezier) arcs between branches at the same tier, bowed
-    // outward through the point on their shared circle, so they read as actual curved web rings
-    // rather than a straight polygon — drawn behind everything else
-    panelWebStrands().forEach((strand) => {
-      const midX = (strand.a.x + strand.b.x) / 2;
-      const midY = (strand.a.y + strand.b.y) / 2;
-      const midDist = Math.hypot(midX, midY) || 1;
-      const radius = Math.hypot(strand.a.x, strand.a.y); // both ends share this tier's radius from the core
-      const bow = radius / midDist;
-      const cx = midX * bow;
-      const cy = midY * bow;
-      const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", `M ${strand.a.x} ${strand.a.y} Q ${cx} ${cy} ${strand.b.x} ${strand.b.y}`);
-      path.setAttribute("class", "web-strand" + (strand.active ? " active" : ""));
-      svg.insertBefore(path, svg.firstChild);
     });
     el.panelMap.appendChild(svg);
 

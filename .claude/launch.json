@@ -4,8 +4,8 @@
     {
       "name": "static-server",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8746", "--directory", "C:/Users/aiki/Documents/magia-tower"],
-      "port": 8746
+      "runtimeArgs": ["-m", "http.server", "8747", "--directory", "C:/Users/aiki/Documents/magia-tower"],
+      "port": 8747
     }
   ]
 }
