@@ -1853,6 +1853,33 @@
     return save.points;
   }
 
+  function writeTranscend(n) {
+    const value = Number(n);
+    if (!Number.isFinite(value)) {
+      console.warn("[mt] 数値を渡してください。例: mt.transcend = 9999");
+      return save.transcendPoints;
+    }
+    save.transcendPoints = Math.max(0, Math.floor(value));
+    persistSave();
+    refreshActiveScreen();
+    console.info("[mt] 転生ポイント =", fmt(save.transcendPoints));
+    // the title hides both the transcend readout and the 転生 button until the final boss has been
+    // beaten once, so points set before that are real but have nowhere to be spent
+    if (!save.transcendUnlocked) {
+      console.warn("[mt] 転生パネルは未解放です。開くには mt.unlockTranscend() を実行してください");
+    }
+    return save.transcendPoints;
+  }
+
+  // normally set by beating the final boss; needed to reach the panel at all
+  function unlockTranscend() {
+    save.transcendUnlocked = true;
+    persistSave();
+    refreshActiveScreen();
+    console.info("[mt] 転生パネルを解放しました（タイトルに「転生」ボタンが出ます）");
+    return true;
+  }
+
   if (DEV_CONSOLE) {
     window.mt = {
       // `mt.points` reads, `mt.points = 500` writes -- an accessor rather than a plain field so
@@ -1867,6 +1894,11 @@
       set gold(n) { writeGold(n); },
       setGold(n) { return writeGold(n); },
       addGold(n) { return game ? writeGold(game.gold + Number(n || 0)) : writeGold(n); },
+      get transcend() { return save.transcendPoints; },
+      set transcend(n) { writeTranscend(n); },
+      setTranscend(n) { return writeTranscend(n); },
+      addTranscend(n) { return writeTranscend(save.transcendPoints + Number(n || 0)); },
+      unlockTranscend() { return unlockTranscend(); },
       help() {
         console.info(
           [
@@ -1883,6 +1915,13 @@
             "  mt.gold = 9999       設定",
             "  mt.addGold(500)      加算（マイナスで減算）",
             "  mt.setGold(0)        mt.gold = 0 と同じ",
+            "",
+            "転生ポイント（永続・自動セーブ）",
+            "  mt.transcend         現在値を表示",
+            "  mt.transcend = 9999  設定",
+            "  mt.addTranscend(500) 加算（マイナスで減算）",
+            "  mt.setTranscend(0)   mt.transcend = 0 と同じ",
+            "  mt.unlockTranscend() 転生パネルを解放（通常はラスボス撃破で解放）",
             "",
             "変更は開いている画面に即座に反映されます。",
           ].join("\n")

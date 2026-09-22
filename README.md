@@ -144,7 +144,28 @@ mt.gold = 9999         // 設定（ラン中のみ。セーブはされない）
 mt.addGold(500)
 mt.setGold(0)
 
+mt.transcend           // 転生ポイントを表示
+mt.transcend = 9999    // 設定（自動セーブ＋画面に即反映）
+mt.addTranscend(500)
+mt.setTranscend(0)
+mt.unlockTranscend()   // 転生パネルを解放（通常はラスボス撃破で解放される）
+
 mt.help()              // 使い方を表示
+```
+
+転生ポイントは、ラスボスを倒すまでタイトルに表示も「転生」ボタンも出ない。
+未解放のまま `mt.transcend` に値を入れても使い道がないので、その場合は警告が出る。
+`mt.unlockTranscend()` を実行すればタイトルに「転生」ボタンが現れ、パネルを開けるようになる。
+
+> **注意**: タイトルの「転生」ボタンは、確認ダイアログでOKするとレベルアップポイント・基本強化・
+> デッキ編成・最高到達階をその場で消す。転生パネルを見るだけの導線は無いので、
+> 消したくない進行状況があるならバックアップを取ってから押すこと（下記）。
+
+セーブデータの退避・復元:
+
+```js
+copy(localStorage.getItem('magiaTower.save.v2'))        // クリップボードへ退避
+localStorage.setItem('magiaTower.save.v2', '<貼り付け>')  // 復元（実行後リロード）
 ```
 
 有効になる条件（`game.js` 冒頭の `DEV_CONSOLE`）:
