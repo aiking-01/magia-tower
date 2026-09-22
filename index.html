@@ -72,6 +72,14 @@
     display: flex; flex-direction: column;
   }
   .home-hero .sub { color: var(--text-dim); font-size: 13px; margin-top: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
+  /* deliberately small and low-contrast, and set apart from the main nav buttons, so it's not
+     mistaken for a normal action; the confirm() dialog on click is the real safety net */
+  .reset-progress-btn {
+    display: block; margin: 14px auto 0; background: transparent; border: none;
+    color: var(--text-dim); font-size: 12px; text-decoration: underline; text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+    cursor: pointer; opacity: 0.7; padding: 4px;
+  }
+  .reset-progress-btn:hover { opacity: 1; color: var(--hp); }
   .home-stats {
     display: flex;
     justify-content: center;
@@ -501,6 +509,7 @@
         <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
       </div>
       <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
+      <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
     </div>
   </div>
 
@@ -1270,6 +1279,7 @@
     bestFloorLabel: document.getElementById("bestFloorLabel"),
     homePointsLabel: document.getElementById("homePointsLabel"),
     openFloorSelectBtn: document.getElementById("openFloorSelectBtn"),
+    resetProgressBtn: document.getElementById("resetProgressBtn"),
     openTreeBtn: document.getElementById("openTreeBtn"),
     openDeckUpgradeBtn: document.getElementById("openDeckUpgradeBtn"),
     openCardShopBtn: document.getElementById("openCardShopBtn"),
@@ -1970,6 +1980,11 @@
   }
 
   el.openFloorSelectBtn.addEventListener("click", () => { showScreen("floorSelect"); renderFloorSelect(); });
+  el.resetProgressBtn.addEventListener("click", () => {
+    if (!confirm("進行状況を全てリセットします。所持カード・強化・転生ポイントなど全てのセーブデータが消え、元に戻せません。よろしいですか?")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  });
   el.floorSelectBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
   el.openTreeBtn.addEventListener("click", () => { showScreen("tree"); renderTree(); centerTreeOnRoot(); });
   el.treeBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
