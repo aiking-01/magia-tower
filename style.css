@@ -1,0 +1,483 @@
+:root {
+  --bg: #0e1230;
+  --panel: #1a2148;
+  --panel-2: #242c5e;
+  --text: #e8ebf8;
+  --text-dim: #98a0cc;
+  --accent: #5468d6;
+  --hp: #e0455f;
+  --attack: #e0455f;
+  --draw: #4a8fe0;
+  --buff: #b463e0;
+  --percent: #4ade9e;
+  --special: #ff9c4a;
+  --chain: #ff6b35;
+  --poison: #7ed321;
+  --gold: #e0b84a;
+  --good: #4ade80;
+  --boss: #ff5c5c;
+  --locked: #333c72;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 14px 16px;
+}
+/* title screen: the key art fills the entire viewport as a fixed background, not boxed inside
+   a panel; toggled via a body class from showScreen() rather than scoping the image to .home-hero */
+body.home-bg {
+  background: radial-gradient(circle at 30% 40%, rgba(14, 18, 48, 0.25), rgba(8, 10, 28, 0.7) 78%), url("assets/title-banner.webp") center 38% / cover no-repeat fixed;
+}
+.app { width: 100%; max-width: 1300px; }
+/* screens meant to be read as a single narrow column (menus, results) stay capped and centered
+   even though .app itself is now wide, since a full-width button/text block looks stretched on a desktop monitor */
+.panel.narrow { max-width: 640px; margin-left: auto; margin-right: auto; }
+h1 {
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.screen { display: none; }
+.screen.active { display: block; }
+.panel {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border: 1px solid #2b3364;
+}
+
+/* ---- Home ---- */
+/* no panel background here: the key art shows through from body.home-bg behind it. The hero
+   fills most of the viewport height and the button group sits pinned to the bottom-left via
+   margin-top: auto, over a translucent scrim so it stays legible against any part of the art */
+.home-hero {
+  text-align: center; background: transparent; border: none; padding: 0; margin-bottom: 0;
+  min-height: min(640px, calc(100vh - 120px));
+  display: flex; flex-direction: column;
+}
+.home-hero .sub { color: var(--text-dim); font-size: 13px; margin-top: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
+/* deliberately small and low-contrast, and set apart from the main nav buttons, so it's not
+   mistaken for a normal action; the confirm() dialog on click is the real safety net */
+.reset-progress-btn {
+  display: block; margin: 14px auto 0; background: transparent; border: none;
+  color: var(--text-dim); font-size: 12px; text-decoration: underline; text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+  cursor: pointer; opacity: 0.7; padding: 4px;
+}
+.reset-progress-btn:hover { opacity: 1; color: var(--hp); }
+.home-stats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 4px 0 10px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+}
+.home-stats b { color: var(--gold); font-size: 16px; }
+.home-banner-buttons {
+  margin-top: auto; margin-left: min(120px, 18%); text-align: left; width: min(280px, 70%);
+  background: rgba(10, 14, 38, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  border-radius: 12px; padding: 14px;
+}
+.home-banner-buttons .btn { margin: 6px 0; padding: 12px; font-size: 14px; }
+.home-banner-buttons .btn:first-child { margin-top: 0; }
+.home-banner-buttons .btn:last-child { margin-bottom: 0; }
+.btn {
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  margin: 10px 0;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn.primary { background: linear-gradient(160deg, var(--accent), #33409a); color: white; }
+.btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid #3c4680; font-size: 14px; padding: 12px; }
+.btn.ghost { background: transparent; color: var(--text-dim); border: 1px solid #333c72; font-size: 13px; padding: 10px; }
+.btn.glow-btn {
+  position: relative;
+  background: linear-gradient(160deg, var(--gold), var(--accent));
+  color: #10132c;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,0.4);
+  animation: glowPulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
+  background-size: 200% 200%;
+}
+.btn.glow-btn:hover { filter: brightness(1.15); }
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px 8px rgba(224,184,74,0.95), 0 0 44px 16px rgba(124,92,255,0.8);
+    transform: scale(1.02);
+  }
+}
+@keyframes glowShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ---- Battle ---- */
+/* wide desktop layout: enemy zone on the left, stats+log stacked on the right; collapses to a
+   single column below ~860px so the game still works on a narrow window/mobile browser. */
+/* the enemy column's height is synced to match the stats+log column exactly via JS
+   (syncEnemyVisualHeight), not CSS grid stretch: log-panel must stay a hard fixed height (see
+   below) rather than flex-growing, or its height goes back to ballooning with content, and
+   without a flex-grow anchor on the right column, pure-CSS stretch just leaves empty space
+   after the log panel instead of truly matching bottoms. JS measures the real, final layout
+   and sets an explicit px height on .enemy-visual, which is simpler and exact. */
+.battle-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+.battle-side { display: flex; flex-direction: column; gap: 14px; }
+/* .panel's own margin-bottom (used for normal block-flow spacing elsewhere) stacks on top of
+   this flex gap and was adding an extra 14px both between and after these two panels — that
+   was the actual source of the leftover gap under the log panel */
+.battle-side .panel { margin-bottom: 0; }
+@media (max-width: 860px) {
+  .battle-layout { grid-template-columns: 1fr; }
+}
+.enemy-visual {
+  height: min(220px, 28vh); border-radius: 10px; margin-top: 12px; position: relative; overflow: hidden;
+  background: radial-gradient(circle at 50% 38%, #1e2554, #0c1030 72%);
+  border: 1px dashed #3c4680;
+  display: flex; align-items: center; justify-content: center;
+}
+.enemy-visual.boss { border-color: var(--boss); }
+/* regular (non-boss) floors show the dungeon backdrop behind the now-transparent character art;
+   boss floors (mid-boss and final boss) keep a plain black backdrop for a more dramatic, focused look */
+.enemy-visual.has-backdrop {
+  background-image: radial-gradient(circle at 50% 38%, rgba(44,39,57,0.35), rgba(22,20,29,0.75) 72%), url("enemies/bg-dungeon.webp");
+  background-size: cover; background-position: center;
+}
+.enemy-visual.boss-bg { background: #000; }
+.enemy-visual img { width: 100%; height: 100%; object-fit: contain; }
+.enemy-visual-hint { color: var(--text-dim); font-size: 13px; letter-spacing: 1px; text-align: center; }
+.floor-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.floor-label { font-size: 12px; color: var(--text-dim); }
+.enemy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.enemy-name { font-size: 18px; font-weight: 700; }
+.enemy-name.boss { color: var(--boss); }
+.enemy-hp-num { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 14px; }
+.bar-track { background: #0a0e26; border-radius: 8px; height: 18px; overflow: hidden; position: relative; }
+.bar-fill { height: 100%; background: linear-gradient(90deg, var(--hp), #ff8a9e); transition: width 0.35s ease; }
+.bar-fill.boss { background: linear-gradient(90deg, #7a1c1c, var(--boss)); }
+.stats-row { display: flex; gap: 10px; }
+.stat-box { flex: 1; background: var(--panel-2); border-radius: 8px; padding: 8px 10px; text-align: center; }
+.stat-label { font-size: 11px; color: var(--text-dim); }
+.stat-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.buff-active { color: var(--buff) !important; }
+.log-panel { height: 90px; overflow-y: auto; font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column-reverse; }
+.battle-side .log-panel { height: 260px; } /* fixed height regardless of how long the battle runs; scrolls internally */
+.log-line { padding: 2px 0; }
+.log-line.dmg { color: var(--attack); }
+.log-line.info { color: var(--draw); }
+.log-line.buff { color: var(--buff); }
+.log-line.percent { color: var(--percent); }
+.log-line.gold { color: var(--gold); }
+.log-line.crit { color: #ff4d4d; font-weight: 700; }
+.hand-title { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; }
+.hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.card {
+  border-radius: 10px; padding: 10px 8px; cursor: pointer; text-align: center; user-select: none;
+  border: 1px solid transparent; transition: transform 0.12s ease, border-color 0.12s ease;
+  min-height: 92px; display: flex; flex-direction: column;
+}
+.card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,0.3); }
+.card:active { transform: translateY(-1px); }
+.card.attack { background: linear-gradient(160deg, #3a1f28, #2a1620); }
+.card.draw { background: linear-gradient(160deg, #1c2c3e, #16222f); }
+.card.buff { background: linear-gradient(160deg, #301f3e, #23172d); }
+.card.percent { background: linear-gradient(160deg, #1c3e30, #16291f); }
+.card.special { background: linear-gradient(160deg, #3e2c1c, #291e16); }
+.card.chain { background: linear-gradient(160deg, #4a1f14, #2e130c); }
+.card.poison { background: linear-gradient(160deg, #223a14, #182710); }
+.card-type { font-size: 10px; color: var(--text-dim); }
+.card-name { font-size: 13px; font-weight: 700; margin: 4px 0; }
+/* rank/crit-note are always rendered (even empty) with a fixed reserved height, so a card's
+   name/value line always sits at the same spot whether or not it happens to have that extra text */
+.card-rank { font-size: 10px; color: var(--gold); font-weight: 700; height: 12px; line-height: 12px; overflow: hidden; }
+.card-value { font-size: 18px; font-weight: 800; margin-top: auto; padding-top: 4px; }
+.card.attack .card-value { color: var(--attack); }
+.card.draw .card-value { color: var(--draw); }
+.card.buff .card-value { color: var(--buff); }
+.card.percent .card-value { color: var(--percent); }
+.card.special .card-value { color: var(--special); }
+.card.chain .card-value { color: var(--chain); }
+.card.poison .card-value { color: var(--poison); }
+.card-crit-note { font-size: 9px; color: var(--gold); margin-top: 2px; height: 22px; line-height: 11px; overflow: hidden; }
+.deck-info { text-align: center; font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+
+/* ---- Card play effect: a quick pop + fade on the card itself when it's used ---- */
+.card.playing { animation: cardPlayFx 0.34s ease forwards; pointer-events: none; }
+@keyframes cardPlayFx {
+  0% { transform: translateY(0) scale(1); filter: brightness(1); }
+  35% { transform: translateY(-10px) scale(1.08); filter: brightness(1.5); box-shadow: 0 0 16px rgba(255,255,255,0.55); }
+  100% { transform: translateY(-26px) scale(0.85); opacity: 0; filter: brightness(1.7); }
+}
+
+/* ---- Card back (placeholder pattern until real art is sent): shared by the deck pile
+   and the face-down side of a card that's about to flip in ---- */
+.deck-pile-card, .card-flip-face.card-back {
+  background: repeating-linear-gradient(135deg, #242c5e, #242c5e 7px, #1a2148 7px, #1a2148 14px);
+  border: 1px solid #3c4680; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.deck-pile-card.back-1::after, .card-flip-face.card-back::after {
+  content: "MT"; color: var(--text-dim); font-size: 12px; font-weight: 800; letter-spacing: 1px; opacity: 0.5;
+}
+
+/* ---- Deck pile: a grid item inside #hand (always appended last), so it automatically gets
+   the exact same cell size as a card and sits to the right of the hand ---- */
+.deck-pile { position: relative; min-height: 92px; }
+.deck-pile-card { position: absolute; inset: 0; }
+.deck-pile-card.back-3 { transform: translate(4px, 4px); opacity: 0.45; }
+.deck-pile-card.back-2 { transform: translate(2px, 2px); opacity: 0.7; }
+.deck-pile-label { position: absolute; top: -17px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); }
+.deck-pile-count {
+  position: absolute; bottom: -8px; right: -8px; background: var(--panel); border: 1px solid #3c4680;
+  color: var(--gold); font-size: 11px; font-weight: 800; border-radius: 999px; padding: 2px 7px; min-width: 20px; text-align: center;
+}
+
+/* ---- Draw-in flip: a newly drawn card enters face-down, then flips to reveal itself ---- */
+.card-flip-outer { perspective: 900px; min-height: 92px; }
+.card-flip-inner {
+  position: relative; width: 100%; height: 100%; min-height: 92px;
+  transform-style: preserve-3d; transition: transform 0.45s ease;
+}
+.card-flip-inner.flipped { transform: rotateY(180deg); }
+.card-flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 10px; }
+.card-flip-face.card-front { transform: rotateY(180deg); }
+
+/* ---- Reward / end screens ---- */
+.reward-title { text-align: center; font-size: 22px; font-weight: 800; margin: 6px 0 2px; }
+.reward-title.win { color: var(--good); }
+.reward-title.lose { color: var(--hp); }
+.reward-sub { text-align: center; color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+.gold-earned { text-align: center; color: var(--gold); font-size: 15px; margin-bottom: 14px; }
+.option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.option-card {
+  background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
+  border: 1px solid #333c72; cursor: pointer;
+}
+.option-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.option-card .oc-name { font-weight: 800; font-size: 15px; margin-bottom: 6px; }
+.option-card .oc-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; min-height: 32px; }
+.option-card .oc-cost { font-size: 13px; color: var(--gold); font-weight: 700; }
+.option-card.disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Floor select ---- */
+.floor-select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.floor-select-card {
+  background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
+  border: 1px solid #333c72; cursor: pointer;
+}
+.floor-select-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.floor-select-card.boss { border-color: var(--boss); }
+.floor-select-card.boss:hover { border-color: var(--boss); }
+.fs-floor { font-weight: 800; font-size: 17px; }
+.fs-floor.boss { color: var(--boss); }
+.fs-hp { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+/* ---- Deck enhancement zone (title screen) ---- */
+.deck-zone-title { font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.deck-zone-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+.deck-zone-list { display: flex; flex-direction: column; gap: 8px; max-height: 520px; overflow-y: auto; }
+.deck-zone-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--panel-2); border-radius: 8px; padding: 8px 10px;
+}
+.dz-info { min-width: 0; }
+.dz-name { font-weight: 700; font-size: 13px; }
+.dz-meta { font-size: 11px; color: var(--text-dim); }
+.dz-active { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.dz-active-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 58px; text-align: center; }
+.dz-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dz-btn {
+  background: var(--panel); border: 1px solid #3c4680; color: var(--text);
+  padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.dz-btn:hover:not(:disabled) { border-color: var(--accent); }
+.dz-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.dz-btn.danger:hover:not(:disabled) { border-color: var(--hp); }
+
+/* ---- Level-up tree ---- */
+.tree-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tree-screen-title { text-align: center; font-weight: 800; font-size: 15px; color: var(--text-dim); margin-bottom: 10px; }
+.tree-points { font-size: 14px; color: var(--text-dim); }
+.tree-points b { color: var(--gold); font-size: 18px; }
+.tree-scroll-wrap {
+  overflow: auto; margin: 0 -16px; padding: 0 16px 8px;
+  max-height: min(640px, calc(100vh - 240px)); /* shrink to the actual window instead of forcing the page to scroll */
+  cursor: grab; -webkit-user-select: none; user-select: none;
+}
+.tree-scroll-wrap.dragging { cursor: grabbing; }
+.tree-map-scaler { position: relative; }
+.tree-map-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; } /* width/height set from JS to fit the actual tree content */
+.tree-map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.tree-map-svg line { stroke: var(--locked); stroke-width: 2; }
+.tree-map-svg line.active { stroke: var(--accent); stroke-width: 3; }
+/* spider-web rings on the reincarnation panel: curved (not straight) threads circling the core,
+   drawn with the exact same weight/opacity as the spokes — real structural lines, not a faint overlay */
+.tree-map-svg path.web-strand { fill: none; stroke: var(--locked); stroke-width: 2; }
+.tree-map-svg path.web-strand.active { stroke: var(--accent); stroke-width: 3; }
+.tree-map-node {
+  position: absolute; transform: translate(-50%, -50%); width: 84px; text-align: center;
+  border-radius: 10px; padding: 6px 5px; font-size: 10px; cursor: default;
+  border: 2px solid var(--locked); background: var(--panel-2);
+}
+.tree-map-node.root {
+  width: 70px; border-radius: 50%; height: 70px; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 11px; border-color: var(--accent); color: var(--accent); background: var(--panel);
+}
+.tree-map-node .tn-name { font-weight: 800; margin-bottom: 2px; }
+.tree-map-node .tn-desc { color: var(--text-dim); font-size: 10px; margin-bottom: 4px; }
+.tree-map-node .tn-cost { font-size: 11px; font-weight: 700; }
+.tree-map-node.locked { opacity: 0.5; }
+.tree-map-node.available { border-color: var(--gold); cursor: pointer; }
+.tree-map-node.available .tn-cost { color: var(--gold); }
+.tree-map-node.available:hover { transform: translate(-50%, -50%) scale(1.05); }
+.tree-map-node.unaffordable { border-color: var(--locked); cursor: not-allowed; }
+.tree-map-node.unaffordable .tn-cost { color: var(--text-dim); }
+.tree-map-node.unlocked { border-color: var(--good); background: linear-gradient(160deg, #1c3a28, #16291f); cursor: default; }
+.tree-map-node.unlocked .tn-cost { color: var(--good); }
+.tree-legend { display: flex; gap: 14px; justify-content: center; font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+.tree-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.tree-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---- Reincarnation panel (same visual language and pan/zoom mechanics as the basic tree) ---- */
+.panel-map-wrap {
+  overflow: auto; margin: 0 -16px; padding: 0 16px 8px;
+  max-height: min(640px, calc(100vh - 210px)); /* shrink to the actual window instead of forcing the page to scroll */
+  cursor: grab; -webkit-user-select: none; user-select: none;
+}
+.panel-map-wrap.dragging { cursor: grabbing; }
+.panel-map-scaler { position: relative; }
+/* .panel-map-container's width/height is set from JS to fit the actual branch layout, same as the basic tree */
+.tree-map-node.panel-special {
+  width: 112px; padding: 8px 6px; font-size: 11px; border-width: 3px;
+}
+.tree-map-node.panel-special.available {
+  animation: specialGlow 1.5s ease-in-out infinite;
+}
+@keyframes specialGlow {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(224,184,74,0.5); }
+  50% { box-shadow: 0 0 22px 9px rgba(224,184,74,0.95); }
+}
+.tree-map-node.core {
+  width: 108px; height: 108px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  font-weight: 800; font-size: 14px; cursor: pointer;
+  border: 2px solid rgba(255,255,255,0.5);
+  background: linear-gradient(160deg, var(--gold), var(--accent));
+  background-size: 200% 200%;
+  color: #10132c;
+  box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
+  animation: corePulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
+}
+.tree-map-node.core:hover { filter: brightness(1.15); }
+.tree-map-node.core .core-sub { font-size: 10px; font-weight: 600; margin-top: 4px; opacity: 0.85; }
+/* .tree-map-node already centers itself on its (left,top) point via transform: translate(-50%,-50%);
+   this keeps that translate in every keyframe so the pulse scale doesn't knock the core off-center
+   (unlike .btn.glow-btn, which has no positioning transform to preserve). */
+@keyframes corePulse {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px 8px rgba(224,184,74,0.95), 0 0 44px 16px rgba(124,92,255,0.8);
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+}
+
+.dmg-float {
+  position: fixed; font-weight: 800; color: var(--attack); pointer-events: none;
+  font-size: 26px; animation: floatUp 2s ease-out forwards; z-index: 20;
+  text-shadow: 0 0 6px rgba(0,0,0,0.6);
+}
+.dmg-float.dmg-big { font-size: 42px; animation-name: floatUpBig; }
+.dmg-float.dmg-huge {
+  font-size: 68px; color: var(--gold); animation-name: floatUpHuge;
+  text-shadow: 0 0 16px var(--gold), 0 0 4px rgba(0,0,0,0.8);
+}
+.dmg-float.dmg-crit {
+  font-size: 50px; color: #ff4d4d; animation-name: floatUpCrit;
+  text-shadow: 0 0 16px #ff4d4d, 0 0 4px rgba(0,0,0,0.85);
+  -webkit-text-stroke: 1px #3a0000;
+}
+.dmg-float.dmg-crit.dmg-huge { font-size: 76px; }
+@keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
+@keyframes floatUpBig {
+  0% { opacity: 1; transform: translateY(0) scale(0.8); }
+  15% { transform: translateY(-8px) scale(1.08); }
+  100% { opacity: 0; transform: translateY(-55px) scale(1); }
+}
+@keyframes floatUpHuge {
+  0% { opacity: 1; transform: translateY(0) scale(0.6); }
+  20% { transform: translateY(-14px) scale(1.25); }
+  100% { opacity: 0; transform: translateY(-75px) scale(1); }
+}
+@keyframes floatUpCrit {
+  0% { opacity: 1; transform: translateY(0) scale(0.5) rotate(0deg); }
+  12% { transform: translateY(-8px) scale(1.35) rotate(-8deg); }
+  24% { transform: translateY(-14px) scale(1.15) rotate(8deg); }
+  36% { transform: translateY(-18px) scale(1.2) rotate(-4deg); }
+  48% { transform: translateY(-24px) scale(1.15) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(-85px) scale(1) rotate(0deg); }
+}
+
+/* ---- Impact juice: screen shake + flash for crit / huge hits ---- */
+.app.shake-huge { animation: shakeHuge 0.4s ease-in-out; }
+.app.shake-crit { animation: shakeCrit 0.45s ease-in-out; }
+.app.shake-mega { animation: shakeMega 0.5s ease-in-out; }
+@keyframes shakeHuge {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-5px, 3px); }
+  50% { transform: translate(5px, -3px); }
+  75% { transform: translate(-3px, 2px); }
+}
+@keyframes shakeCrit {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-7px, 4px) rotate(-0.6deg); }
+  40% { transform: translate(6px, -4px) rotate(0.6deg); }
+  60% { transform: translate(-5px, 3px) rotate(-0.4deg); }
+  80% { transform: translate(3px, -2px) rotate(0.3deg); }
+}
+@keyframes shakeMega {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  15% { transform: translate(-11px, 6px) rotate(-1deg); }
+  30% { transform: translate(10px, -7px) rotate(1deg); }
+  45% { transform: translate(-9px, 5px) rotate(-0.8deg); }
+  60% { transform: translate(8px, -4px) rotate(0.6deg); }
+  75% { transform: translate(-5px, 3px) rotate(-0.4deg); }
+  90% { transform: translate(3px, -2px) rotate(0.2deg); }
+}
+.screen-flash {
+  position: fixed; inset: 0; pointer-events: none; z-index: 15; opacity: 0;
+}
+.screen-flash.flash-huge {
+  background: radial-gradient(circle, rgba(224,184,74,0.32), transparent 70%);
+  animation: flashPulse 0.45s ease-out;
+}
+.screen-flash.flash-crit {
+  background: radial-gradient(circle, rgba(255,77,77,0.38), transparent 70%);
+  animation: flashPulse 0.45s ease-out;
+}
+@keyframes flashPulse {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
