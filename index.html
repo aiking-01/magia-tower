@@ -134,6 +134,15 @@
     display: flex; align-items: center; justify-content: center;
   }
   .enemy-visual.boss { border-color: var(--boss); }
+  /* regular (non-boss) floors show the dungeon backdrop behind the now-transparent character art;
+     mid-boss/final-boss floors keep the plain dark gradient for a more dramatic, focused look */
+  .enemy-visual.has-backdrop {
+    background-image: radial-gradient(circle at 50% 38%, rgba(44,39,57,0.35), rgba(22,20,29,0.75) 72%), url("enemies/bg-dungeon.webp");
+    background-size: cover; background-position: center;
+  }
+  /* the recurring mid-boss (死の賭博師) gets a plain black backdrop, distinct from both the
+     dungeon backdrop (regular floors) and the final boss's dark gradient */
+  .enemy-visual.mid-boss-bg { background: #000; }
   .enemy-visual img { width: 100%; height: 100%; object-fit: contain; }
   .enemy-visual-hint { color: var(--text-dim); font-size: 13px; letter-spacing: 1px; text-align: center; }
   .floor-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
@@ -648,24 +657,26 @@
   // enemy roster: floors cycle through 9 regular monsters, the 10th floor of every 10-floor
   // block is a mid-boss (the same art/name each time it comes around), and floor 100 exactly is
   // the one-time final boss reveal.
+  // these 9 are pre-processed to a transparent background (flood-filled from the border, so the
+  // dungeon backdrop below shows through) with the AI generator's watermark removed
   const ENEMY_ROSTER = [
-    { name: "ゴブリン", art: "enemies/01-goblin.webp" },
-    { name: "ミミック", art: "enemies/02-mimic.webp" },
-    { name: "浮遊する眼魔", art: "enemies/03-eye.webp" },
-    { name: "スケルトン戦士", art: "enemies/04-skeleton.webp" },
-    { name: "キノコの妖精", art: "enemies/05-mushroom.webp" },
-    { name: "盗賊ネズミ", art: "enemies/06-rat.webp" },
-    { name: "腐食のコウモリ", art: "enemies/07-bat.webp" },
-    { name: "菌糸の蜘蛛", art: "enemies/08-spider.webp" },
-    { name: "亡霊茸", art: "enemies/09-mushroom-skeleton.webp" },
+    { name: "ゴブリン", art: "enemies/01-goblin.png" },
+    { name: "ミミック", art: "enemies/02-mimic.png" },
+    { name: "浮遊する眼魔", art: "enemies/03-eye.png" },
+    { name: "スケルトン戦士", art: "enemies/04-skeleton.png" },
+    { name: "キノコの妖精", art: "enemies/05-mushroom.png" },
+    { name: "盗賊ネズミ", art: "enemies/06-rat.png" },
+    { name: "腐食のコウモリ", art: "enemies/07-bat.png" },
+    { name: "菌糸の蜘蛛", art: "enemies/08-spider.png" },
+    { name: "亡霊茸", art: "enemies/09-mushroom-skeleton.png" },
   ];
   const MID_BOSS = { name: "死の賭博師", art: "enemies/10-midboss.png" };
   const FINAL_BOSS = { name: "塔の支配者（ラスボス）", art: "enemies/11-finalboss.png" };
 
   function enemyForFloor(floor) {
-    if (floor === FINAL_FLOOR) return Object.assign({ isBoss: true }, FINAL_BOSS);
-    if (floor % 10 === 0) return Object.assign({ isBoss: true }, MID_BOSS);
-    return Object.assign({ isBoss: false }, ENEMY_ROSTER[(floor - 1) % 10]);
+    if (floor === FINAL_FLOOR) return Object.assign({ isBoss: true, isMidBoss: false }, FINAL_BOSS);
+    if (floor % 10 === 0) return Object.assign({ isBoss: true, isMidBoss: true }, MID_BOSS);
+    return Object.assign({ isBoss: false, isMidBoss: false }, ENEMY_ROSTER[(floor - 1) % 10]);
   }
   const TAG_LABELS = { flame: "炎" };
   const TYPE_LABELS = { attack: "攻撃", draw: "ドロー", percent: "割合", special: "特殊", chain: "連鎖", buff: "バフ", poison: "毒" };
@@ -1789,6 +1800,8 @@
     el.enemyName.classList.toggle("boss", enemy.isBoss);
     el.enemyBar.classList.toggle("boss", enemy.isBoss);
     el.enemyVisual.classList.toggle("boss", enemy.isBoss);
+    el.enemyVisual.classList.toggle("has-backdrop", !enemy.isBoss);
+    el.enemyVisual.classList.toggle("mid-boss-bg", enemy.isMidBoss);
     if (el.enemyVisual.dataset.art !== enemy.art) {
       el.enemyVisual.dataset.art = enemy.art;
       el.enemyVisual.innerHTML = `<img src="${enemy.art}" alt="${enemy.name}">`;
