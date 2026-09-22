@@ -1792,6 +1792,33 @@
     if (render) render();
   }
 
+  // gold only shows up on the battle screen and on the floor-clear shop. renderBattle() rebuilds
+  // the whole hand (and drives its flip animations), so the battle screen gets just the one label
+  // updated; the shop needs the full re-render because what you can afford depends on gold.
+  function refreshRunGold() {
+    const active = document.querySelector(".screen.active");
+    if (!active) return;
+    if (active.id === "screen-battle") el.battleGold.textContent = fmt(game.gold);
+    else if (active.id === "screen-floorClear") renderShop();
+  }
+
+  function writeGold(n) {
+    // gold lives on the run object, not in the save: outside a run there is nothing to set
+    if (!game) {
+      console.warn("[mt] ゴールドはラン中のみ設定できます（「塔に挑む」でランを開始してください）");
+      return null;
+    }
+    const value = Number(n);
+    if (!Number.isFinite(value)) {
+      console.warn("[mt] 数値を渡してください。例: mt.gold = 9999");
+      return game.gold;
+    }
+    game.gold = Math.max(0, Math.floor(value));
+    refreshRunGold();
+    console.info("[mt] ゴールド =", fmt(game.gold));
+    return game.gold;
+  }
+
   function writePoints(n) {
     const value = Number(n);
     if (!Number.isFinite(value)) {
@@ -1814,16 +1841,29 @@
       set points(n) { writePoints(n); },
       setPoints(n) { return writePoints(n); },
       addPoints(n) { return writePoints(save.points + Number(n || 0)); },
+      // null outside a run rather than a warning, so devtools autocomplete can preview it quietly
+      get gold() { return game ? game.gold : null; },
+      set gold(n) { writeGold(n); },
+      setGold(n) { return writeGold(n); },
+      addGold(n) { return game ? writeGold(game.gold + Number(n || 0)) : writeGold(n); },
       help() {
         console.info(
           [
             "マギア・タワー デバッグコンソール",
-            "  mt.points            現在のレベルアップポイントを表示",
-            "  mt.points = 9999     レベルアップポイントを設定",
-            "  mt.addPoints(500)    レベルアップポイントを加算（マイナスで減算）",
+            "",
+            "レベルアップポイント（永続・自動セーブ）",
+            "  mt.points            現在値を表示",
+            "  mt.points = 9999     設定",
+            "  mt.addPoints(500)    加算（マイナスで減算）",
             "  mt.setPoints(0)      mt.points = 0 と同じ",
             "",
-            "変更は即座にセーブされ、開いている画面にも反映されます。",
+            "ゴールド（ラン中のみ・セーブされません）",
+            "  mt.gold              現在値を表示（ラン外は null）",
+            "  mt.gold = 9999       設定",
+            "  mt.addGold(500)      加算（マイナスで減算）",
+            "  mt.setGold(0)        mt.gold = 0 と同じ",
+            "",
+            "変更は開いている画面に即座に反映されます。",
           ].join("\n")
         );
       },
