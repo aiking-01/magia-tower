@@ -5,12 +5,12 @@
 <title>マギア・タワー アルファ版</title>
 <style>
   :root {
-    --bg: #14121a;
-    --panel: #201d29;
-    --panel-2: #2a2635;
-    --text: #eae6f5;
-    --text-dim: #9b93ad;
-    --accent: #7c5cff;
+    --bg: #0e1230;
+    --panel: #1a2148;
+    --panel-2: #242c5e;
+    --text: #e8ebf8;
+    --text-dim: #98a0cc;
+    --accent: #5468d6;
     --hp: #e0455f;
     --attack: #e0455f;
     --draw: #4a8fe0;
@@ -22,7 +22,7 @@
     --gold: #e0b84a;
     --good: #4ade80;
     --boss: #ff5c5c;
-    --locked: #3a3648;
+    --locked: #333c72;
   }
   * { box-sizing: border-box; }
   body {
@@ -34,6 +34,11 @@
     display: flex;
     justify-content: center;
     padding: 14px 16px;
+  }
+  /* title screen: the key art fills the entire viewport as a fixed background, not boxed inside
+     a panel; toggled via a body class from showScreen() rather than scoping the image to .home-hero */
+  body.home-bg {
+    background: radial-gradient(circle at 30% 40%, rgba(14, 18, 48, 0.25), rgba(8, 10, 28, 0.7) 78%), url("assets/title-banner.webp") center 38% / cover no-repeat fixed;
   }
   .app { width: 100%; max-width: 1300px; }
   /* screens meant to be read as a single narrow column (menus, results) stay capped and centered
@@ -54,21 +59,37 @@
     border-radius: 12px;
     padding: 16px;
     margin-bottom: 14px;
-    border: 1px solid #33303f;
+    border: 1px solid #2b3364;
   }
 
   /* ---- Home ---- */
-  .home-hero { text-align: center; padding: 20px 0 10px; }
-  .home-hero .sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+  /* no panel background here: the key art shows through from body.home-bg behind it. The hero
+     fills most of the viewport height and the button group sits pinned to the bottom-left via
+     margin-top: auto, over a translucent scrim so it stays legible against any part of the art */
+  .home-hero {
+    text-align: center; background: transparent; border: none; padding: 0; margin-bottom: 0;
+    min-height: min(640px, calc(100vh - 120px));
+    display: flex; flex-direction: column;
+  }
+  .home-hero .sub { color: var(--text-dim); font-size: 13px; margin-top: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
   .home-stats {
     display: flex;
     justify-content: center;
     gap: 24px;
     font-size: 13px;
     color: var(--text-dim);
-    margin-bottom: 4px;
+    padding: 4px 0 10px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.85);
   }
   .home-stats b { color: var(--gold); font-size: 16px; }
+  .home-banner-buttons {
+    margin-top: auto; margin-left: min(120px, 18%); text-align: left; width: min(280px, 70%);
+    background: rgba(10, 14, 38, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    border-radius: 12px; padding: 14px;
+  }
+  .home-banner-buttons .btn { margin: 6px 0; padding: 12px; font-size: 14px; }
+  .home-banner-buttons .btn:first-child { margin-top: 0; }
+  .home-banner-buttons .btn:last-child { margin-bottom: 0; }
   .btn {
     display: block;
     width: 100%;
@@ -81,13 +102,13 @@
     margin: 10px 0;
   }
   .btn:hover { filter: brightness(1.1); }
-  .btn.primary { background: linear-gradient(160deg, var(--accent), #5b3fd6); color: white; }
-  .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid #454057; font-size: 14px; padding: 12px; }
-  .btn.ghost { background: transparent; color: var(--text-dim); border: 1px solid #3a3648; font-size: 13px; padding: 10px; }
+  .btn.primary { background: linear-gradient(160deg, var(--accent), #33409a); color: white; }
+  .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid #3c4680; font-size: 14px; padding: 12px; }
+  .btn.ghost { background: transparent; color: var(--text-dim); border: 1px solid #333c72; font-size: 13px; padding: 10px; }
   .btn.glow-btn {
     position: relative;
     background: linear-gradient(160deg, var(--gold), var(--accent));
-    color: #1a1420;
+    color: #10132c;
     font-weight: 800;
     border: 1px solid rgba(255,255,255,0.4);
     animation: glowPulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
@@ -129,20 +150,18 @@
   }
   .enemy-visual {
     height: min(220px, 28vh); border-radius: 10px; margin-top: 12px; position: relative; overflow: hidden;
-    background: radial-gradient(circle at 50% 38%, #2c2739, #16141d 72%);
-    border: 1px dashed #454057;
+    background: radial-gradient(circle at 50% 38%, #1e2554, #0c1030 72%);
+    border: 1px dashed #3c4680;
     display: flex; align-items: center; justify-content: center;
   }
   .enemy-visual.boss { border-color: var(--boss); }
   /* regular (non-boss) floors show the dungeon backdrop behind the now-transparent character art;
-     mid-boss/final-boss floors keep the plain dark gradient for a more dramatic, focused look */
+     boss floors (mid-boss and final boss) keep a plain black backdrop for a more dramatic, focused look */
   .enemy-visual.has-backdrop {
     background-image: radial-gradient(circle at 50% 38%, rgba(44,39,57,0.35), rgba(22,20,29,0.75) 72%), url("enemies/bg-dungeon.webp");
     background-size: cover; background-position: center;
   }
-  /* the recurring mid-boss (死の賭博師) gets a plain black backdrop, distinct from both the
-     dungeon backdrop (regular floors) and the final boss's dark gradient */
-  .enemy-visual.mid-boss-bg { background: #000; }
+  .enemy-visual.boss-bg { background: #000; }
   .enemy-visual img { width: 100%; height: 100%; object-fit: contain; }
   .enemy-visual-hint { color: var(--text-dim); font-size: 13px; letter-spacing: 1px; text-align: center; }
   .floor-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
@@ -151,7 +170,7 @@
   .enemy-name { font-size: 18px; font-weight: 700; }
   .enemy-name.boss { color: var(--boss); }
   .enemy-hp-num { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 14px; }
-  .bar-track { background: #131118; border-radius: 8px; height: 18px; overflow: hidden; position: relative; }
+  .bar-track { background: #0a0e26; border-radius: 8px; height: 18px; overflow: hidden; position: relative; }
   .bar-fill { height: 100%; background: linear-gradient(90deg, var(--hp), #ff8a9e); transition: width 0.35s ease; }
   .bar-fill.boss { background: linear-gradient(90deg, #7a1c1c, var(--boss)); }
   .stats-row { display: flex; gap: 10px; }
@@ -211,8 +230,8 @@
   /* ---- Card back (placeholder pattern until real art is sent): shared by the deck pile
      and the face-down side of a card that's about to flip in ---- */
   .deck-pile-card, .card-flip-face.card-back {
-    background: repeating-linear-gradient(135deg, #2a2635, #2a2635 7px, #221e2b 7px, #221e2b 14px);
-    border: 1px solid #454057; border-radius: 8px;
+    background: repeating-linear-gradient(135deg, #242c5e, #242c5e 7px, #1a2148 7px, #1a2148 14px);
+    border: 1px solid #3c4680; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
   }
   .deck-pile-card.back-1::after, .card-flip-face.card-back::after {
@@ -227,7 +246,7 @@
   .deck-pile-card.back-2 { transform: translate(2px, 2px); opacity: 0.7; }
   .deck-pile-label { position: absolute; top: -17px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); }
   .deck-pile-count {
-    position: absolute; bottom: -8px; right: -8px; background: var(--panel); border: 1px solid #454057;
+    position: absolute; bottom: -8px; right: -8px; background: var(--panel); border: 1px solid #3c4680;
     color: var(--gold); font-size: 11px; font-weight: 800; border-radius: 999px; padding: 2px 7px; min-width: 20px; text-align: center;
   }
 
@@ -250,7 +269,7 @@
   .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   .option-card {
     background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
-    border: 1px solid #3a3648; cursor: pointer;
+    border: 1px solid #333c72; cursor: pointer;
   }
   .option-card:hover { border-color: var(--accent); transform: translateY(-2px); }
   .option-card .oc-name { font-weight: 800; font-size: 15px; margin-bottom: 6px; }
@@ -262,7 +281,7 @@
   .floor-select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
   .floor-select-card {
     background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
-    border: 1px solid #3a3648; cursor: pointer;
+    border: 1px solid #333c72; cursor: pointer;
   }
   .floor-select-card:hover { border-color: var(--accent); transform: translateY(-2px); }
   .floor-select-card.boss { border-color: var(--boss); }
@@ -286,7 +305,7 @@
   .dz-active-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 58px; text-align: center; }
   .dz-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .dz-btn {
-    background: var(--panel); border: 1px solid #454057; color: var(--text);
+    background: var(--panel); border: 1px solid #3c4680; color: var(--text);
     padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap;
   }
   .dz-btn:hover:not(:disabled) { border-color: var(--accent); }
@@ -363,7 +382,7 @@
     border: 2px solid rgba(255,255,255,0.5);
     background: linear-gradient(160deg, var(--gold), var(--accent));
     background-size: 200% 200%;
-    color: #1a1420;
+    color: #10132c;
     box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
     animation: corePulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
   }
@@ -468,17 +487,20 @@
 
   <!-- ============ HOME ============ -->
   <div class="screen" id="screen-home">
-    <div class="panel narrow home-hero">
+    <div class="panel home-hero">
       <div class="home-stats">
         <span>最高到達階 <b id="bestFloorLabel">-</b></span>
         <span>レベルアップポイント <b id="homePointsLabel">0</b></span>
         <span id="homeTranscendStat" style="display:none;">転生ポイント <b id="homeTranscendLabel">0</b></span>
       </div>
-      <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
-      <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
-      <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
-      <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
-      <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
+      <div class="home-banner-buttons">
+        <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
+        <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
+        <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
+        <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
+        <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
+      </div>
+      </div>
       <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
     </div>
   </div>
@@ -1320,6 +1342,7 @@
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     document.getElementById("screen-" + name).classList.add("active");
+    document.body.classList.toggle("home-bg", name === "home");
   }
 
   const E_NOTATION_THRESHOLD = 1e9; // below this, plain comma-separated numbers; at/above, "+E" notation
@@ -1801,7 +1824,7 @@
     el.enemyBar.classList.toggle("boss", enemy.isBoss);
     el.enemyVisual.classList.toggle("boss", enemy.isBoss);
     el.enemyVisual.classList.toggle("has-backdrop", !enemy.isBoss);
-    el.enemyVisual.classList.toggle("mid-boss-bg", enemy.isMidBoss);
+    el.enemyVisual.classList.toggle("boss-bg", enemy.isBoss);
     if (el.enemyVisual.dataset.art !== enemy.art) {
       el.enemyVisual.dataset.art = enemy.art;
       el.enemyVisual.innerHTML = `<img src="${enemy.art}" alt="${enemy.name}">`;
