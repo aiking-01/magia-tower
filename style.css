@@ -251,7 +251,7 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 
 /* ---- Deck pile: a grid item inside #hand (always appended last), so it automatically gets
    the exact same cell size as a card and sits to the right of the hand ---- */
-.deck-pile { position: relative; min-height: 92px; }
+.deck-pile { position: relative; min-height: 92px; pointer-events: none; }
 .deck-pile-card { position: absolute; inset: 0; }
 .deck-pile-card.back-3 { transform: translate(4px, 4px); opacity: 0.45; }
 .deck-pile-card.back-2 { transform: translate(2px, 2px); opacity: 0.7; }
@@ -262,7 +262,14 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 }
 
 /* ---- Draw-in flip: a newly drawn card enters face-down, then flips to reveal itself ---- */
-.card-flip-outer { perspective: 900px; min-height: 92px; }
+/* the outer is the click target (the handler is bound here in renderBattle) and the only layer that
+   never rotates. z-index lifts it over the deck pile, which it flies out of and would otherwise
+   slide underneath. */
+.card-flip-outer { perspective: 900px; min-height: 92px; cursor: pointer; z-index: 1; }
+/* the spinning faces are decoration only. Without this, hit-testing lands on whichever face is
+   toward the viewer -- the card BACK for the ~1.1s the reveal takes -- and the card is dead to
+   clicks the whole time it is animating in. */
+.card-flip-inner, .card-flip-face { pointer-events: none; }
 .card-flip-inner {
   position: relative; width: 100%; height: 100%; min-height: 92px;
   transform-style: preserve-3d; transition: transform 0.45s ease;

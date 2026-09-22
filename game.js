@@ -1229,10 +1229,13 @@
         const front = document.createElement("div");
         front.className = "card-flip-face card-front " + cardClass;
         front.innerHTML = contentHtml;
-        front.addEventListener("click", () => playCard(card.uid));
         inner.appendChild(back);
         inner.appendChild(front);
         outer.appendChild(inner);
+        // the handler goes on the outer, which never rotates: the faces spin during the reveal and
+        // a rotated-away face is not hit-testable, so a handler on .card-front is dead for the
+        // ~1.1s the animation runs (see .card-flip-face { pointer-events: none } in style.css)
+        outer.addEventListener("click", () => playCard(card.uid));
         el.hand.appendChild(outer);
         toFlip.push(inner);
         newUids.push(String(card.uid));
@@ -1261,13 +1264,10 @@
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
       node.style.transition = "none";
       node.style.transform = `translate(${dx}px, ${dy}px)`;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          node.style.transition = `transform ${FLIP_SLIDE_MS}ms ease`;
-          node.style.transform = "";
-          setTimeout(() => { node.style.transition = ""; }, FLIP_SLIDE_MS);
-        });
-      });
+      void node.offsetWidth; // flush the start position so the transition below has something to animate from
+      node.style.transition = `transform ${FLIP_SLIDE_MS}ms ease`;
+      node.style.transform = "";
+      setTimeout(() => { node.style.transition = ""; }, FLIP_SLIDE_MS);
     });
 
     if (toFlip.length) {
