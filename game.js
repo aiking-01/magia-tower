@@ -671,6 +671,7 @@
     homeTranscendStat: document.getElementById("homeTranscendStat"),
     homeTranscendLabel: document.getElementById("homeTranscendLabel"),
     openPanelBtn: document.getElementById("openPanelBtn"),
+    panelBackBtn: document.getElementById("panelBackBtn"),
     panelPointsLabel: document.getElementById("panelPointsLabel"),
     panelMap: document.getElementById("panelMap"),
     panelScrollWrap: document.getElementById("panelScrollWrap"),
@@ -1331,7 +1332,27 @@
   el.deckUpgradeBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
   el.openCardShopBtn.addEventListener("click", () => { showScreen("cardShop"); renderCardShop(); });
   el.cardShopBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
-  el.openPanelBtn.addEventListener("click", () => { reincarnateNow(); });
+  // the reincarnation panel's only way out used to be the core node buried in the middle of the
+  // pannable map, which is easy to lose track of once you scroll away from it
+  el.panelBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
+  // reincarnateNow() wipes real progress the instant it runs and persists it, so this gets the same
+  // confirm the reset button has. The numbers are spelled out because the title screen only shows
+  // the transcend points, not what is about to be given up.
+  el.openPanelBtn.addEventListener("click", () => {
+    const message =
+      "転生します。\n\n" +
+      "【失われるもの】\n" +
+      `・レベルアップポイント（${fmt(save.points)}）\n` +
+      "・基本強化（習得済みノード）\n" +
+      "・デッキ編成\n" +
+      `・最高到達階（${save.bestFloor > 0 ? save.bestFloor + "階" : "なし"}）\n\n` +
+      "【引き継がれるもの】\n" +
+      `・転生ポイント（${fmt(save.transcendPoints)}）\n` +
+      "・転生パネルの強化\n\n" +
+      "元に戻せません。よろしいですか?";
+    if (!confirm(message)) return;
+    reincarnateNow();
+  });
 
   // reincarnation panel: permanent, paid with transcend points, never reset by reincarnation.
   // rendered as several long branches radiating from the core (same visual language as the basic
