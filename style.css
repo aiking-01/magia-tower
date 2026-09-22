@@ -19,15 +19,22 @@
   --locked: #333c72;
 }
 * { box-sizing: border-box; }
+/* stops iOS Safari from inflating font sizes of its own accord when the phone is turned sideways */
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
   min-height: 100vh;
+  min-height: 100dvh; /* mobile browsers: 100vh counts the collapsing address bar, 100dvh does not */
   display: flex;
   justify-content: center;
   padding: 14px 16px;
+  /* viewport-fit=cover lets the art run under the notch/home indicator; the insets keep the UI out of them */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
 /* title screen: the key art fills the entire viewport as a fixed background, not boxed inside
    a panel; toggled via a body class from showScreen() rather than scoping the image to .home-hero */
@@ -63,9 +70,13 @@ h1 {
 .home-hero {
   text-align: center; background: transparent; border: none; padding: 0; margin-bottom: 0;
   min-height: min(640px, calc(100vh - 120px));
+  min-height: min(640px, calc(100dvh - 120px));
   display: flex; flex-direction: column;
 }
 .home-hero .sub { color: var(--text-dim); font-size: 13px; margin-top: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
+/* the h1 and the stat row sit over the key art on the title screen, so they need the same scrim
+   the other text on this screen already has */
+body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 /* deliberately small and low-contrast, and set apart from the main nav buttons, so it's not
    mistaken for a normal action; the confirm() dialog on click is the real safety net */
 .reset-progress-btn {
@@ -73,7 +84,6 @@ h1 {
   color: var(--text-dim); font-size: 12px; text-decoration: underline; text-shadow: 0 1px 6px rgba(0,0,0,0.85);
   cursor: pointer; opacity: 0.7; padding: 4px;
 }
-.reset-progress-btn:hover { opacity: 1; color: var(--hp); }
 .home-stats {
   display: flex;
   justify-content: center;
@@ -103,7 +113,6 @@ h1 {
   cursor: pointer;
   margin: 10px 0;
 }
-.btn:hover { filter: brightness(1.1); }
 .btn.primary { background: linear-gradient(160deg, var(--accent), #33409a); color: white; }
 .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid #3c4680; font-size: 14px; padding: 12px; }
 .btn.ghost { background: transparent; color: var(--text-dim); border: 1px solid #333c72; font-size: 13px; padding: 10px; }
@@ -116,7 +125,6 @@ h1 {
   animation: glowPulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
   background-size: 200% 200%;
 }
-.btn.glow-btn:hover { filter: brightness(1.15); }
 @keyframes glowPulse {
   0%, 100% {
     box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
@@ -149,6 +157,8 @@ h1 {
 .battle-side .panel { margin-bottom: 0; }
 @media (max-width: 860px) {
   .battle-layout { grid-template-columns: 1fr; }
+  /* the matching height overrides for .enemy-visual / .log-panel are in the responsive section at
+     the end of this file: at equal specificity they have to come after those base rules to win */
 }
 .enemy-visual {
   height: min(220px, 28vh); border-radius: 10px; margin-top: 12px; position: relative; overflow: hidden;
@@ -196,7 +206,6 @@ h1 {
   border: 1px solid transparent; transition: transform 0.12s ease, border-color 0.12s ease;
   min-height: 92px; display: flex; flex-direction: column;
 }
-.card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,0.3); }
 .card:active { transform: translateY(-1px); }
 .card.attack { background: linear-gradient(160deg, #3a1f28, #2a1620); }
 .card.draw { background: linear-gradient(160deg, #1c2c3e, #16222f); }
@@ -273,7 +282,6 @@ h1 {
   background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
   border: 1px solid #333c72; cursor: pointer;
 }
-.option-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .option-card .oc-name { font-weight: 800; font-size: 15px; margin-bottom: 6px; }
 .option-card .oc-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; min-height: 32px; }
 .option-card .oc-cost { font-size: 13px; color: var(--gold); font-weight: 700; }
@@ -285,9 +293,7 @@ h1 {
   background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
   border: 1px solid #333c72; cursor: pointer;
 }
-.floor-select-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .floor-select-card.boss { border-color: var(--boss); }
-.floor-select-card.boss:hover { border-color: var(--boss); }
 .fs-floor { font-weight: 800; font-size: 17px; }
 .fs-floor.boss { color: var(--boss); }
 .fs-hp { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
@@ -310,9 +316,7 @@ h1 {
   background: var(--panel); border: 1px solid #3c4680; color: var(--text);
   padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap;
 }
-.dz-btn:hover:not(:disabled) { border-color: var(--accent); }
 .dz-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.dz-btn.danger:hover:not(:disabled) { border-color: var(--hp); }
 
 /* ---- Level-up tree ---- */
 .tree-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -322,7 +326,9 @@ h1 {
 .tree-scroll-wrap {
   overflow: auto; margin: 0 -16px; padding: 0 16px 8px;
   max-height: min(640px, calc(100vh - 240px)); /* shrink to the actual window instead of forcing the page to scroll */
+  max-height: min(640px, calc(100dvh - 240px));
   cursor: grab; -webkit-user-select: none; user-select: none;
+  touch-action: none; /* drag-pan and pinch-zoom are handled in JS; let it own the gesture */
 }
 .tree-scroll-wrap.dragging { cursor: grabbing; }
 .tree-map-scaler { position: relative; }
@@ -349,7 +355,6 @@ h1 {
 .tree-map-node.locked { opacity: 0.5; }
 .tree-map-node.available { border-color: var(--gold); cursor: pointer; }
 .tree-map-node.available .tn-cost { color: var(--gold); }
-.tree-map-node.available:hover { transform: translate(-50%, -50%) scale(1.05); }
 .tree-map-node.unaffordable { border-color: var(--locked); cursor: not-allowed; }
 .tree-map-node.unaffordable .tn-cost { color: var(--text-dim); }
 .tree-map-node.unlocked { border-color: var(--good); background: linear-gradient(160deg, #1c3a28, #16291f); cursor: default; }
@@ -362,7 +367,9 @@ h1 {
 .panel-map-wrap {
   overflow: auto; margin: 0 -16px; padding: 0 16px 8px;
   max-height: min(640px, calc(100vh - 210px)); /* shrink to the actual window instead of forcing the page to scroll */
+  max-height: min(640px, calc(100dvh - 210px));
   cursor: grab; -webkit-user-select: none; user-select: none;
+  touch-action: none; /* drag-pan and pinch-zoom are handled in JS; let it own the gesture */
 }
 .panel-map-wrap.dragging { cursor: grabbing; }
 .panel-map-scaler { position: relative; }
@@ -388,7 +395,6 @@ h1 {
   box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
   animation: corePulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
 }
-.tree-map-node.core:hover { filter: brightness(1.15); }
 .tree-map-node.core .core-sub { font-size: 10px; font-weight: 600; margin-top: 4px; opacity: 0.85; }
 /* .tree-map-node already centers itself on its (left,top) point via transform: translate(-50%,-50%);
    this keeps that translate in every keyframe so the pulse scale doesn't knock the core off-center
@@ -404,10 +410,12 @@ h1 {
   }
 }
 
+/* width is set from JS to the enemy art's width and the text centred inside it, so a long
+   number grows symmetrically instead of running off the right edge of a narrow screen */
 .dmg-float {
   position: fixed; font-weight: 800; color: var(--attack); pointer-events: none;
   font-size: 26px; animation: floatUp 2s ease-out forwards; z-index: 20;
-  text-shadow: 0 0 6px rgba(0,0,0,0.6);
+  text-shadow: 0 0 6px rgba(0,0,0,0.6); text-align: center; white-space: nowrap;
 }
 .dmg-float.dmg-big { font-size: 42px; animation-name: floatUpBig; }
 .dmg-float.dmg-huge {
@@ -480,4 +488,166 @@ h1 {
 @keyframes flashPulse {
   0% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+
+/* ---- Hover states ----
+   gated behind (hover: hover) because on a touch screen a :hover style latches on after a tap
+   and stays until the next tap elsewhere, leaving cards and tree nodes looking selected.
+   :active is left ungated on purpose: it gives real press feedback on touch too. */
+@media (hover: hover) {
+  .reset-progress-btn:hover { opacity: 1; color: var(--hp); }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.glow-btn:hover { filter: brightness(1.15); }
+  .card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,0.3); }
+  .option-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .floor-select-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .floor-select-card.boss:hover { border-color: var(--boss); }
+  .dz-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .dz-btn.danger:hover:not(:disabled) { border-color: var(--hp); }
+  .tree-map-node.available:hover { transform: translate(-50%, -50%) scale(1.05); }
+  .tree-map-node.core:hover { filter: brightness(1.15); }
+}
+
+/* ---- Responsive ----
+   860px is the battle screen's two-column -> one-column switch (mirrored in JS by
+   syncEnemyVisualHeight, which stops height-matching below it). 640px is the phone layout. */
+@media (max-width: 640px) {
+  body {
+    padding: 10px 10px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  h1 { font-size: 15px; letter-spacing: 1px; margin-bottom: 8px; }
+  .panel { padding: 12px; border-radius: 10px; margin-bottom: 10px; }
+
+  /* ios ignores background-attachment: fixed and renders the key art at the wrong scale;
+     the home screen is about one viewport tall anyway, so scrolling with the page is fine */
+  .home-hero { min-height: calc(100dvh - 130px); }
+  .home-stats { flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+  .home-stats b { font-size: 15px; }
+  /* full width along the bottom instead of inset from the left: there is no room on a phone
+     for the art to breathe beside the buttons */
+  .home-banner-buttons { margin-left: 0; width: 100%; padding: 12px; }
+  .home-hero .sub { font-size: 12px; }
+
+  /* three cards per row at 360px rather than two half-empty ones */
+  .hand-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .card { min-height: 84px; padding: 8px 6px; }
+  .card-name { font-size: 12px; }
+  .card-value { font-size: 16px; }
+  .card-crit-note { height: 20px; }
+  .deck-pile, .card-flip-outer, .card-flip-inner { min-height: 84px; }
+  .deck-info { font-size: 11px; }
+
+  .enemy-name { font-size: 16px; }
+  .stats-row { gap: 6px; }
+  .stat-box { padding: 6px 4px; }
+  .stat-label { font-size: 10px; }
+  .stat-value { font-size: 17px; }
+
+  /* side-by-side options are too cramped to read at this width */
+  .option-grid { grid-template-columns: 1fr; gap: 10px; }
+  .option-card .oc-desc { min-height: 0; }
+  .floor-select-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .fs-floor { font-size: 15px; }
+
+  /* the back button and the points readout stop fitting on one line */
+  .tree-header { flex-wrap: wrap; gap: 8px; }
+  .tree-points { font-size: 13px; }
+  /* negative margins must track .panel's reduced padding or the map bleeds past the panel edge */
+  .tree-scroll-wrap, .panel-map-wrap {
+    margin: 0 -12px; padding: 0 12px 8px;
+    max-height: calc(100vh - 230px);
+    max-height: calc(100dvh - 230px);
+  }
+  .tree-legend { gap: 10px; font-size: 10px; flex-wrap: wrap; }
+
+  /* name on its own line, the -/+ and action buttons below it */
+  .deck-zone-list { max-height: none; }
+  .deck-zone-row { flex-wrap: wrap; gap: 8px; }
+  .dz-info { flex: 1 1 100%; }
+  .dz-active { flex: 1 1 auto; }
+  .dz-actions { flex: 0 0 auto; margin-left: auto; }
+
+  .reward-title { font-size: 19px; }
+  .reward-sub { font-size: 12px; margin-bottom: 14px; }
+
+  /* the desktop sizes are wider than a phone screen at four or more digits */
+  .dmg-float { font-size: 20px; }
+  .dmg-float.dmg-big { font-size: 30px; }
+  .dmg-float.dmg-huge { font-size: 42px; }
+  .dmg-float.dmg-crit { font-size: 32px; }
+  .dmg-float.dmg-crit.dmg-huge { font-size: 48px; }
+}
+
+@media (max-width: 400px) {
+  .hand-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+  .card { min-height: 78px; }
+  .deck-pile, .card-flip-outer, .card-flip-inner { min-height: 78px; }
+  .home-stats { font-size: 11px; }
+  .btn { padding: 13px; font-size: 15px; }
+  .floor-select-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+}
+
+/* phone held sideways: almost no vertical room, so the tall fixed blocks have to give.
+   The battle heights for this case live with the other .enemy-visual / .log-panel overrides below. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .home-hero { min-height: calc(100dvh - 90px); }
+  .tree-scroll-wrap, .panel-map-wrap {
+    max-height: calc(100vh - 170px);
+    max-height: calc(100dvh - 170px);
+  }
+}
+/* ...and here the width is not the problem, the height is, so the stacking that (max-width: 860px)
+   just applied is undone: side by side keeps the hand near the fold instead of pushing it a whole
+   enemy panel further down. isStackedBattleLayout() in game.js mirrors these two conditions. */
+@media (max-height: 520px) and (min-width: 640px) and (orientation: landscape) {
+  .battle-layout { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
+}
+
+/* stacked battle layout: the desktop heights were sized for a side column and a synced enemy
+   panel, and together they push the hand below the fold on a phone. Has to sit after the base
+   .enemy-visual / .log-panel rules to win the cascade at equal specificity. */
+@media (max-width: 860px) {
+  .battle-side .log-panel { height: 120px; }
+  .enemy-visual { height: min(220px, 26vh); }
+}
+@media (max-width: 640px) {
+  .battle-side .log-panel { height: 100px; }
+  .enemy-visual { height: min(190px, 24vh); margin-top: 10px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .battle-side .log-panel { height: 90px; }
+  .enemy-visual { height: min(150px, 34vh); }
+}
+
+/* ios and android render background-attachment: fixed at the wrong scale (or not at all); the
+   home screen is about one viewport tall anyway, so letting the art scroll with it costs nothing */
+@media (pointer: coarse) {
+  body.home-bg { background-attachment: scroll; }
+}
+
+/* the key art is a 1.68:1 landscape banner, so on a portrait window `cover` blows it up until
+   only the middle of the wordmark is left. Fit the whole banner across the top instead and let
+   the gradient fill the rest — which is where the button block sits anyway. */
+@media (max-aspect-ratio: 1 / 1) {
+  body.home-bg {
+    /* the banner runs edge to edge, laid in 96px down so it starts below the h1 and the stat row
+       instead of colliding with them. At full width its height is exactly 100vw/1.68, so both of
+       its edges are known (96px and calc(96px + 60vw)) whatever the viewport height is, and the
+       overlay can fade them both into the page background rather than leaving a hard-edged
+       rectangle floating in the middle of the screen. */
+    background-image:
+      linear-gradient(to bottom,
+        var(--bg) 0,
+        var(--bg) 80px,
+        rgba(14, 18, 48, 0.18) 120px,
+        rgba(14, 18, 48, 0.18) calc(96px + 34vw),
+        var(--bg) calc(96px + 60vw)),
+      url("assets/title-banner.webp");
+    background-position: center top, center 96px;
+    background-size: auto, 100% auto;
+  }
 }

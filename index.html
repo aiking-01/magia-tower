@@ -1,194 +1,217 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
-<meta charset="UTF-8">
-<title>マギア・タワー アルファ版</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>マギア・タワー アルファ版</title>
+  <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-<div class="app">
-  <h1>マギア・タワー — アルファ版</h1>
+  <div class="app">
+    <h1>マギア・タワー — アルファ版</h1>
 
-  <!-- ============ HOME ============ -->
-  <div class="screen" id="screen-home">
-    <div class="panel home-hero">
-      <div class="home-stats">
-        <span>最高到達階 <b id="bestFloorLabel">-</b></span>
-        <span>レベルアップポイント <b id="homePointsLabel">0</b></span>
-        <span id="homeTranscendStat" style="display:none;">転生ポイント <b id="homeTranscendLabel">0</b></span>
-      </div>
-      <div class="home-banner-buttons">
-        <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
-        <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
-        <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
-        <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
-        <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
-      </div>
-      <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
-      <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
-    </div>
-  </div>
-
-  <!-- ============ DECK UPGRADE (title screen, paid with level-up points) ============ -->
-  <div class="screen" id="screen-deckUpgrade">
-    <div class="panel">
-      <div class="tree-header">
-        <button class="btn ghost" id="deckUpgradeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-        <div class="tree-points">所持ポイント <b id="deckUpgradePointsLabel">0</b></div>
-      </div>
-      <div class="tree-screen-title">デッキ強化</div>
-      <div class="deck-zone-sub">カードを選んで強化・削除できる。使うたびに次の費用が2倍になる。ここでの変更は次回以降の全てのランに永続的に反映される。「−／＋」で、所持しているカードのうち実際にデッキへ編成する枚数を調整できる。</div>
-      <div class="deck-zone-sub" id="deckZoneTotal" style="font-weight:800; color:var(--gold);"></div>
-      <div class="deck-zone-list" id="deckZoneList"></div>
-    </div>
-  </div>
-
-  <!-- ============ CARD SHOP (title screen, unlocked via the reincarnation panel, paid with level-up points) ============ -->
-  <div class="screen" id="screen-cardShop">
-    <div class="panel">
-      <div class="tree-header">
-        <button class="btn ghost" id="cardShopBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-        <div class="tree-points">所持ポイント <b id="cardShopPointsLabel">0</b></div>
-      </div>
-      <div class="tree-screen-title">カードショップ</div>
-      <div class="deck-zone-sub">レベルアップポイントで強力なカードを購入し、デッキに追加できる。何度でも購入できる。</div>
-      <div class="option-grid" id="cardShopOptions"></div>
-    </div>
-  </div>
-
-  <!-- ============ FLOOR SELECT ============ -->
-  <div class="screen" id="screen-floorSelect">
-    <div class="panel">
-      <div class="tree-header">
-        <button class="btn ghost" id="floorSelectBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-      </div>
-      <div class="tree-screen-title">挑む階層を選ぶ</div>
-      <div class="reward-sub" style="margin-bottom:14px;">10階層区切りのチェックポイントから、好きな階層に挑戦できる。</div>
-      <div class="floor-select-grid" id="floorSelectGrid"></div>
-    </div>
-  </div>
-
-  <!-- ============ LEVEL UP TREE (basic) ============ -->
-  <div class="screen" id="screen-tree">
-    <div class="panel">
-      <div class="tree-header">
-        <button class="btn ghost" id="treeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-        <div class="tree-points">所持ポイント <b id="treePointsLabel">0</b></div>
-      </div>
-      <div class="tree-screen-title">基本強化</div>
-      <div class="tree-scroll-wrap" id="treeScrollWrap"><div class="tree-map-scaler" id="treeMapScaler"><div class="tree-map-container" id="treeMap"></div></div></div>
-      <div class="tree-legend">
-        <span><i style="background:var(--good)"></i>習得済み</span>
-        <span><i style="background:var(--gold)"></i>習得可能</span>
-        <span><i style="background:var(--locked)"></i>未解放</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ BATTLE ============ -->
-  <div class="screen" id="screen-battle">
-    <div class="battle-layout">
-      <div class="panel">
-        <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 100</span></div>
-        <div class="enemy-row">
-          <div class="enemy-name" id="enemyName">見張りのモンスター</div>
-          <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span></div>
+    <!-- ============ HOME ============ -->
+    <div class="screen" id="screen-home">
+      <div class="panel home-hero">
+        <div class="home-stats">
+          <span>最高到達階 <b id="bestFloorLabel">-</b></span>
+          <span>レベルアップポイント <b id="homePointsLabel">0</b></span>
+          <span id="homeTranscendStat" style="display:none;">転生ポイント <b id="homeTranscendLabel">0</b></span>
         </div>
-        <div class="bar-track"><div class="bar-fill" id="enemyBar" style="width:100%"></div></div>
-        <!-- reserved for enemy artwork: JS toggles .boss and can later insert an <img> here.
-             Last in the panel so its bottom edge lines up with the log panel's (height synced
-             to match via JS — see syncEnemyVisualHeight). -->
-        <div class="enemy-visual" id="enemyVisual"><span class="enemy-visual-hint">敵の見た目（準備中）</span></div>
+        <div class="home-banner-buttons">
+          <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
+          <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
+          <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
+          <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
+          <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
+        </div>
+        <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
+        <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
       </div>
-      <div class="battle-side" id="battleSide">
-        <div class="panel">
-          <div class="stats-row">
-            <div class="stat-box"><div class="stat-label">残り手数 n</div><div class="stat-value" id="statN">10</div></div>
-            <div class="stat-box"><div class="stat-label">基礎攻撃力</div><div class="stat-value" id="statAtk">3</div></div>
-            <div class="stat-box"><div class="stat-label">バフ</div><div class="stat-value" id="statBuff">-</div></div>
+    </div>
+
+    <!-- ============ DECK UPGRADE (title screen, paid with level-up points) ============ -->
+    <div class="screen" id="screen-deckUpgrade">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="deckUpgradeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持ポイント <b id="deckUpgradePointsLabel">0</b></div>
+        </div>
+        <div class="tree-screen-title">デッキ強化</div>
+        <div class="deck-zone-sub">
+          カードを選んで強化・削除できる。使うたびに次の費用が2倍になる。ここでの変更は次回以降の全てのランに永続的に反映される。「−／＋」で、所持しているカードのうち実際にデッキへ編成する枚数を調整できる。</div>
+        <div class="deck-zone-sub" id="deckZoneTotal" style="font-weight:800; color:var(--gold);"></div>
+        <div class="deck-zone-list" id="deckZoneList"></div>
+      </div>
+    </div>
+
+    <!-- ============ CARD SHOP (title screen, unlocked via the reincarnation panel, paid with level-up points) ============ -->
+    <div class="screen" id="screen-cardShop">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="cardShopBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持ポイント <b id="cardShopPointsLabel">0</b></div>
+        </div>
+        <div class="tree-screen-title">カードショップ</div>
+        <div class="deck-zone-sub">レベルアップポイントで強力なカードを購入し、デッキに追加できる。何度でも購入できる。</div>
+        <div class="option-grid" id="cardShopOptions"></div>
+      </div>
+    </div>
+
+    <!-- ============ FLOOR SELECT ============ -->
+    <div class="screen" id="screen-floorSelect">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="floorSelectBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+        </div>
+        <div class="tree-screen-title">挑む階層を選ぶ</div>
+        <div class="reward-sub" style="margin-bottom:14px;">10階層区切りのチェックポイントから、好きな階層に挑戦できる。</div>
+        <div class="floor-select-grid" id="floorSelectGrid"></div>
+      </div>
+    </div>
+
+    <!-- ============ LEVEL UP TREE (basic) ============ -->
+    <div class="screen" id="screen-tree">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="treeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持ポイント <b id="treePointsLabel">0</b></div>
+        </div>
+        <div class="tree-screen-title">基本強化</div>
+        <div class="tree-scroll-wrap" id="treeScrollWrap">
+          <div class="tree-map-scaler" id="treeMapScaler">
+            <div class="tree-map-container" id="treeMap"></div>
           </div>
         </div>
-        <div class="panel"><div class="log-panel" id="log"></div></div>
+        <div class="tree-legend">
+          <span><i style="background:var(--good)"></i>習得済み</span>
+          <span><i style="background:var(--gold)"></i>習得可能</span>
+          <span><i style="background:var(--locked)"></i>未解放</span>
+        </div>
       </div>
     </div>
-    <div class="panel">
-      <div class="hand-title"><span>手札</span><span id="handCount">5枚</span></div>
-      <div class="hand-grid" id="hand"></div>
-      <!-- card back design is a placeholder (repeating pattern + "MT" mark) until real art is sent.
+
+    <!-- ============ BATTLE ============ -->
+    <div class="screen" id="screen-battle">
+      <div class="battle-layout">
+        <div class="panel">
+          <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 100</span></div>
+          <div class="enemy-row">
+            <div class="enemy-name" id="enemyName">見張りのモンスター</div>
+            <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span></div>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" id="enemyBar" style="width:100%"></div>
+          </div>
+          <!-- reserved for enemy artwork: JS toggles .boss and can later insert an <img> here.
+             Last in the panel so its bottom edge lines up with the log panel's (height synced
+             to match via JS — see syncEnemyVisualHeight). -->
+          <div class="enemy-visual" id="enemyVisual"><span class="enemy-visual-hint">敵の見た目（準備中）</span></div>
+        </div>
+        <div class="battle-side" id="battleSide">
+          <div class="panel">
+            <div class="stats-row">
+              <div class="stat-box">
+                <div class="stat-label">残り手数 n</div>
+                <div class="stat-value" id="statN">10</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">基礎攻撃力</div>
+                <div class="stat-value" id="statAtk">3</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">バフ</div>
+                <div class="stat-value" id="statBuff">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="log-panel" id="log"></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hand-title"><span>手札</span><span id="handCount">5枚</span></div>
+        <div class="hand-grid" id="hand"></div>
+        <!-- card back design is a placeholder (repeating pattern + "MT" mark) until real art is sent.
            renderBattle() always re-appends this as #hand's last grid item, so it sits to the
            right of the hand and always matches a card's grid-cell size exactly. -->
-      <div class="deck-pile" id="deckPile" title="山札">
-        <div class="deck-pile-card back-3"></div>
-        <div class="deck-pile-card back-2"></div>
-        <div class="deck-pile-card back-1"></div>
-        <div class="deck-pile-label">山札</div>
-        <div class="deck-pile-count" id="deckPileCount">10</div>
+        <div class="deck-pile" id="deckPile" title="山札">
+          <div class="deck-pile-card back-3"></div>
+          <div class="deck-pile-card back-2"></div>
+          <div class="deck-pile-card back-1"></div>
+          <div class="deck-pile-label">山札</div>
+          <div class="deck-pile-count" id="deckPileCount">10</div>
+        </div>
+        <div class="deck-info">山札残り: <span id="deckCount">10</span> 枚（使用したカードは山札の下へ戻る） / 所持金 <span
+            id="battleGold">0</span>G</div>
       </div>
-      <div class="deck-info">山札残り: <span id="deckCount">10</span> 枚（使用したカードは山札の下へ戻る） / 所持金 <span id="battleGold">0</span>G</div>
     </div>
-  </div>
 
-  <!-- ============ FLOOR CLEAR (win, non-boss) ============ -->
-  <div class="screen" id="screen-floorClear">
-    <div class="panel narrow">
-      <div class="reward-title win">階層クリア！</div>
-      <div class="reward-sub" id="floorClearSub">次の階層へ進む前に、商人から強化を購入できる</div>
-      <div class="gold-earned">所持金: <b id="shopGold">0</b> G</div>
-      <div class="option-grid" id="shopOptions"></div>
-      <button class="btn secondary" id="rerollBtn">リロール</button>
-      <button class="btn primary" id="toNextFloorBtn">次の階層へ</button>
-      <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>
-    </div>
-  </div>
-
-  <!-- ============ DEFEAT (loss -> back to title) ============ -->
-  <div class="screen" id="screen-defeat">
-    <div class="panel narrow" style="text-align:center;">
-      <div class="reward-title lose"><span id="defeatFloor">1</span>階で敗北…</div>
-      <div class="reward-sub">力尽きたが、倒した敵たちから得た力は残る。</div>
-      <div class="gold-earned" style="font-size:18px;">レベルアップポイント +<b id="defeatPoints">0</b></div>
-      <button class="btn primary" id="defeatToHomeBtn">タイトルへ戻る</button>
-    </div>
-  </div>
-
-  <!-- ============ RETREAT (voluntary end -> back to title) ============ -->
-  <div class="screen" id="screen-retreat">
-    <div class="panel narrow" style="text-align:center;">
-      <div class="reward-title win"><span id="retreatFloor">1</span>階まで進んで撤退した</div>
-      <div class="reward-sub">無理をせず、ここまでの力を持ち帰った。</div>
-      <div class="gold-earned" style="font-size:18px;">レベルアップポイント +<b id="retreatPoints">0</b></div>
-      <button class="btn primary" id="retreatToHomeBtn">タイトルへ戻る</button>
-    </div>
-  </div>
-
-  <!-- ============ FINAL VICTORY ============ -->
-  <div class="screen" id="screen-finalVictory">
-    <div class="panel narrow" style="text-align:center;">
-      <div class="reward-title win" style="font-size:28px;">ラスボス討伐！</div>
-      <div class="reward-sub">塔の頂上に到達したが、扉の向こうにはまだ道が続いている。さらに深く進むか、ここで現世へ帰るか。</div>
-      <div class="gold-earned" style="font-size:20px;">レベルアップポイント +<b id="victoryPoints">0</b></div>
-      <button class="btn primary" id="enterEndlessBtn">エンドレスモードへ進む（101階〜）</button>
-      <button class="btn secondary" id="victoryToHomeBtn">タイトルへ戻る</button>
-    </div>
-  </div>
-
-  <!-- ============ REINCARNATION PANEL (title screen, permanent, paid with transcend points) ============ -->
-  <div class="screen" id="screen-panel">
-    <div class="panel">
-      <div class="tree-header">
-        <div class="tree-screen-title" style="margin:0;">転生パネル</div>
-        <div class="tree-points">所持転生ポイント <b id="panelPointsLabel">0</b></div>
+    <!-- ============ FLOOR CLEAR (win, non-boss) ============ -->
+    <div class="screen" id="screen-floorClear">
+      <div class="panel narrow">
+        <div class="reward-title win">階層クリア！</div>
+        <div class="reward-sub" id="floorClearSub">次の階層へ進む前に、商人から強化を購入できる</div>
+        <div class="gold-earned">所持金: <b id="shopGold">0</b> G</div>
+        <div class="option-grid" id="shopOptions"></div>
+        <button class="btn secondary" id="rerollBtn">リロール</button>
+        <button class="btn primary" id="toNextFloorBtn">次の階層へ</button>
+        <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>
       </div>
-      <div class="deck-zone-sub">転生した！レベルアップポイント・基本強化・デッキは初期状態に戻った。ここでの強化は転生しても失われない。中心の「核」をクリックすると次の周回へ進む。</div>
-      <div class="panel-map-wrap" id="panelScrollWrap">
-        <div class="panel-map-scaler" id="panelMapScaler">
-          <div class="tree-map-container panel-map-container" id="panelMap"></div>
+    </div>
+
+    <!-- ============ DEFEAT (loss -> back to title) ============ -->
+    <div class="screen" id="screen-defeat">
+      <div class="panel narrow" style="text-align:center;">
+        <div class="reward-title lose"><span id="defeatFloor">1</span>階で敗北…</div>
+        <div class="reward-sub">力尽きたが、倒した敵たちから得た力は残る。</div>
+        <div class="gold-earned" style="font-size:18px;">レベルアップポイント +<b id="defeatPoints">0</b></div>
+        <button class="btn primary" id="defeatToHomeBtn">タイトルへ戻る</button>
+      </div>
+    </div>
+
+    <!-- ============ RETREAT (voluntary end -> back to title) ============ -->
+    <div class="screen" id="screen-retreat">
+      <div class="panel narrow" style="text-align:center;">
+        <div class="reward-title win"><span id="retreatFloor">1</span>階まで進んで撤退した</div>
+        <div class="reward-sub">無理をせず、ここまでの力を持ち帰った。</div>
+        <div class="gold-earned" style="font-size:18px;">レベルアップポイント +<b id="retreatPoints">0</b></div>
+        <button class="btn primary" id="retreatToHomeBtn">タイトルへ戻る</button>
+      </div>
+    </div>
+
+    <!-- ============ FINAL VICTORY ============ -->
+    <div class="screen" id="screen-finalVictory">
+      <div class="panel narrow" style="text-align:center;">
+        <div class="reward-title win" style="font-size:28px;">ラスボス討伐！</div>
+        <div class="reward-sub">塔の頂上に到達したが、扉の向こうにはまだ道が続いている。さらに深く進むか、ここで現世へ帰るか。</div>
+        <div class="gold-earned" style="font-size:20px;">レベルアップポイント +<b id="victoryPoints">0</b></div>
+        <button class="btn primary" id="enterEndlessBtn">エンドレスモードへ進む（101階〜）</button>
+        <button class="btn secondary" id="victoryToHomeBtn">タイトルへ戻る</button>
+      </div>
+    </div>
+
+    <!-- ============ REINCARNATION PANEL (title screen, permanent, paid with transcend points) ============ -->
+    <div class="screen" id="screen-panel">
+      <div class="panel">
+        <div class="tree-header">
+          <div class="tree-screen-title" style="margin:0;">転生パネル</div>
+          <div class="tree-points">所持転生ポイント <b id="panelPointsLabel">0</b></div>
+        </div>
+        <div class="deck-zone-sub">転生した！レベルアップポイント・基本強化・デッキは初期状態に戻った。ここでの強化は転生しても失われない。中心の「核」をクリックすると次の周回へ進む。</div>
+        <div class="panel-map-wrap" id="panelScrollWrap">
+          <div class="panel-map-scaler" id="panelMapScaler">
+            <div class="tree-map-container panel-map-container" id="panelMap"></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<script src="game.js"></script>
+  <script src="game.js"></script>
 </body>
+
 </html>

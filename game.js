@@ -7,6 +7,11 @@
   const FINAL_FLOOR = 100;
   // debug cards are off by default; open the file with ?debug=1 in the URL to enable them for testing
   const DEBUG_MODE = new URLSearchParams(location.search).get("debug") === "1";
+  // the console cheats (window.mt, see the bottom of this file) are on wherever the game is being
+  // worked on -- a local server or a file:// open -- and on a deployed build only with ?debug=1,
+  // so a published page doesn't hand every player a points editor in one keystroke.
+  const LOCAL_ORIGIN = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
+  const DEV_CONSOLE = DEBUG_MODE || LOCAL_ORIGIN;
 
   // enemy roster: floors cycle through 9 regular monsters, the 10th floor of every 10-floor
   // block is a mid-boss (the same art/name each time it comes around), and floor 100 exactly is
@@ -715,7 +720,8 @@
     }
     f.className = cls;
     f.textContent = (isCrit ? "会心！-" : "-") + fmt(amount);
-    f.style.left = (rect.left + rect.width / 2 - 20) + "px";
+    f.style.left = rect.left + "px";
+    f.style.width = rect.width + "px";
     f.style.top = (rect.top + rect.height / 2 - 20) + "px";
     document.body.appendChild(f);
     setTimeout(() => f.remove(), 2000);
@@ -1274,13 +1280,22 @@
     syncEnemyVisualHeight();
   }
 
+  // the battle screen stacks into one column below 860px -- except on a short landscape window
+  // (a phone turned sideways), where the width is there and the height is what is scarce, so
+  // style.css puts the two columns back. These mirror that pair of media queries.
+  const narrowBattleMQ = window.matchMedia("(max-width: 860px)");
+  const landscapeBattleMQ = window.matchMedia("(max-height: 520px) and (min-width: 640px) and (orientation: landscape)");
+  function isStackedBattleLayout() {
+    return narrowBattleMQ.matches && !landscapeBattleMQ.matches;
+  }
+
   // makes the enemy art zone's bottom edge land exactly on the log panel's bottom edge: measures
   // the stats+log column's real rendered height and the enemy panel's own non-art content height,
   // then sets an explicit px height on .enemy-visual to make up the difference. Plain CSS
   // stretch/flex-grow can't do this without either leaving a gap after the log panel or letting
   // the log panel's own height depend on its (scrollable, unbounded) content again.
   function syncEnemyVisualHeight() {
-    if (window.matchMedia("(max-width: 860px)").matches) {
+    if (isStackedBattleLayout()) {
       el.enemyVisual.style.height = ""; // stacked single-column layout: nothing to match
       return;
     }
@@ -1527,14 +1542,18 @@
     window.addEventListener("mouseup", pointerUp);
 
     wrap.addEventListener("touchstart", (e) => {
+      // a second finger means this is a pinch (see setupPinchZoom), not a pan
+      if (e.touches.length > 1) { dragging = false; moved = true; wrap.classList.remove("dragging"); return; }
       const t = e.touches[0];
       pointerDown(t.pageX, t.pageY);
     }, { passive: true });
     wrap.addEventListener("touchmove", (e) => {
+      if (e.touches.length > 1) { dragging = false; return; }
       const t = e.touches[0];
       pointerMove(t.pageX, t.pageY, e);
     }, { passive: false });
     wrap.addEventListener("touchend", pointerUp);
+    wrap.addEventListener("touchcancel", pointerUp);
 
     // if the gesture was a drag (not a tap/click), swallow the click so it doesn't
     // also trigger whatever node button happens to be under the cursor on release.
@@ -1548,10 +1567,52 @@
   setupDragPan(el.treeScrollWrap);
   setupDragPan(el.panelScrollWrap);
 
-  // ---------------- Wheel-to-zoom the skill tree ----------------
+  // ---------------- Pinch-to-zoom (touch equivalent of the wheel handlers below) ----------------
+  // a phone has no wheel event, so without this the maps are stuck at whatever zoom they open at.
+  // applyZoom(z) is the caller's "clamp, store and re-render at this zoom" step; this keeps the
+  // point between the two fingers pinned in place, exactly like the wheel handlers keep the cursor.
+  function setupPinchZoom(wrap, getZoom, applyZoom) {
+    let pinching = false;
+    let startDist = 0, startZoom = 1;
+    const spread = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    wrap.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 2) return;
+      pinching = true;
+      startDist = spread(e.touches);
+      startZoom = getZoom();
+    }, { passive: true });
+
+    wrap.addEventListener("touchmove", (e) => {
+      if (!pinching || e.touches.length !== 2 || startDist === 0) return;
+      if (e.cancelable) e.preventDefault();
+      const rect = wrap.getBoundingClientRect();
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      // the content point currently between the fingers, in unscaled map coordinates
+      const zoom = getZoom();
+      const contentX = (wrap.scrollLeft + midX) / zoom;
+      const contentY = (wrap.scrollTop + midY) / zoom;
+
+      const next = applyZoom(startZoom * (spread(e.touches) / startDist));
+      wrap.scrollLeft = contentX * next - midX;
+      wrap.scrollTop = contentY * next - midY;
+    }, { passive: false });
+
+    const endPinch = (e) => { if (e.touches.length < 2) pinching = false; };
+    wrap.addEventListener("touchend", endPinch);
+    wrap.addEventListener("touchcancel", endPinch);
+  }
+
+  // the maps open zoomed in enough to read a node on a desktop monitor; at phone width that same
+  // zoom shows barely two nodes, so narrow screens open further out and pinch in from there
+  const narrowScreen = window.matchMedia("(max-width: 640px)");
+
+  // ---------------- Zooming the skill tree (wheel on desktop, pinch on touch) ----------------
   const TREE_ZOOM_MIN = 0.35;
   const TREE_ZOOM_MAX = 2;
   const TREE_OPEN_ZOOM = 1.6; // opening the screen starts zoomed in on the origin, not showing a corner of the map
+  const TREE_OPEN_ZOOM_NARROW = 0.8; // phone width: 1.6 leaves barely two nodes on screen
   let treeZoom = 1;
 
   function applyTreeZoom() {
@@ -1565,11 +1626,19 @@
 
   // center the view on the root node at a strong zoom level; used whenever the tree screen opens
   function centerTreeOnRoot() {
-    treeZoom = TREE_OPEN_ZOOM;
+    treeZoom = narrowScreen.matches ? TREE_OPEN_ZOOM_NARROW : TREE_OPEN_ZOOM;
     applyTreeZoom();
     const wrap = el.treeScrollWrap;
     wrap.scrollLeft = ROOT.x * treeZoom - wrap.clientWidth / 2;
     wrap.scrollTop = ROOT.y * treeZoom - wrap.clientHeight / 2;
+  }
+
+  // clamp, store and re-render at the requested zoom; returns the zoom actually applied so the
+  // caller can re-anchor its scroll against it. Shared by the wheel and pinch handlers.
+  function setTreeZoom(z) {
+    treeZoom = Math.min(TREE_ZOOM_MAX, Math.max(TREE_ZOOM_MIN, z));
+    applyTreeZoom();
+    return treeZoom;
   }
 
   el.treeScrollWrap.addEventListener("wheel", (e) => {
@@ -1583,18 +1652,20 @@
     const contentY = (wrap.scrollTop + cursorY) / treeZoom;
 
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    treeZoom = Math.min(TREE_ZOOM_MAX, Math.max(TREE_ZOOM_MIN, treeZoom * factor));
-    applyTreeZoom();
+    setTreeZoom(treeZoom * factor);
 
     // re-anchor scroll so the same content point stays under the cursor
     wrap.scrollLeft = contentX * treeZoom - cursorX;
     wrap.scrollTop = contentY * treeZoom - cursorY;
   }, { passive: false });
 
-  // ---------------- Wheel-to-zoom the reincarnation panel ----------------
+  setupPinchZoom(el.treeScrollWrap, () => treeZoom, setTreeZoom);
+
+  // ---------------- Zooming the reincarnation panel (wheel on desktop, pinch on touch) ----------------
   const PANEL_ZOOM_MIN = 0.3;
   const PANEL_ZOOM_MAX = 1.5;
   const PANEL_OPEN_ZOOM = 0.85; // the panel is much bigger now; open a bit zoomed out so several branches are visible at once
+  const PANEL_OPEN_ZOOM_NARROW = 0.45; // phone width: open far enough out to see the core and its spokes
   let panelZoom = 1;
 
   function applyPanelZoom() {
@@ -1608,11 +1679,17 @@
 
   // center the view on the core at a slightly zoomed-out level; used whenever the panel opens
   function centerPanelOnCore() {
-    panelZoom = PANEL_OPEN_ZOOM;
+    panelZoom = narrowScreen.matches ? PANEL_OPEN_ZOOM_NARROW : PANEL_OPEN_ZOOM;
     applyPanelZoom();
     const wrap = el.panelScrollWrap;
     wrap.scrollLeft = PANEL_POS.core.x * panelZoom - wrap.clientWidth / 2;
     wrap.scrollTop = PANEL_POS.core.y * panelZoom - wrap.clientHeight / 2;
+  }
+
+  function setPanelZoom(z) {
+    panelZoom = Math.min(PANEL_ZOOM_MAX, Math.max(PANEL_ZOOM_MIN, z));
+    applyPanelZoom();
+    return panelZoom;
   }
 
   el.panelScrollWrap.addEventListener("wheel", (e) => {
@@ -1625,12 +1702,13 @@
     const contentY = (wrap.scrollTop + cursorY) / panelZoom;
 
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    panelZoom = Math.min(PANEL_ZOOM_MAX, Math.max(PANEL_ZOOM_MIN, panelZoom * factor));
-    applyPanelZoom();
+    setPanelZoom(panelZoom * factor);
 
     wrap.scrollLeft = contentX * panelZoom - cursorX;
     wrap.scrollTop = contentY * panelZoom - cursorY;
   }, { passive: false });
+
+  setupPinchZoom(el.panelScrollWrap, () => panelZoom, setPanelZoom);
 
   // ---------------- Render: level-up tree ----------------
   function nodeState(node) {
@@ -1696,6 +1774,61 @@
       }
       el.treeMap.appendChild(div);
     });
+  }
+
+  // ---------------- Dev console ----------------
+  // re-renders whichever screen happens to be open, so a value changed from the console shows up
+  // straight away instead of only after navigating somewhere else and back
+  function refreshActiveScreen() {
+    const renderers = {
+      "screen-home": renderHome,
+      "screen-tree": renderTree,
+      "screen-deckUpgrade": renderDeckZone,
+      "screen-cardShop": renderCardShop,
+      "screen-panel": renderPanel,
+    };
+    const active = document.querySelector(".screen.active");
+    const render = active && renderers[active.id];
+    if (render) render();
+  }
+
+  function writePoints(n) {
+    const value = Number(n);
+    if (!Number.isFinite(value)) {
+      console.warn("[mt] 数値を渡してください。例: mt.points = 9999");
+      return save.points;
+    }
+    save.points = Math.max(0, Math.floor(value));
+    persistSave();
+    refreshActiveScreen();
+    console.info("[mt] レベルアップポイント =", fmt(save.points));
+    return save.points;
+  }
+
+  if (DEV_CONSOLE) {
+    window.mt = {
+      // `mt.points` reads, `mt.points = 500` writes -- an accessor rather than a plain field so
+      // the assignment itself persists the save and repaints, which is how you'd expect it to work
+      // when poking at it from devtools
+      get points() { return save.points; },
+      set points(n) { writePoints(n); },
+      setPoints(n) { return writePoints(n); },
+      addPoints(n) { return writePoints(save.points + Number(n || 0)); },
+      help() {
+        console.info(
+          [
+            "マギア・タワー デバッグコンソール",
+            "  mt.points            現在のレベルアップポイントを表示",
+            "  mt.points = 9999     レベルアップポイントを設定",
+            "  mt.addPoints(500)    レベルアップポイントを加算（マイナスで減算）",
+            "  mt.setPoints(0)      mt.points = 0 と同じ",
+            "",
+            "変更は即座にセーブされ、開いている画面にも反映されます。",
+          ].join("\n")
+        );
+      },
+    };
+    console.info("[mt] デバッグコンソール有効。使い方は mt.help()");
   }
 
   // ---------------- Init ----------------
