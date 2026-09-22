@@ -993,7 +993,7 @@
     { id: "critRate1", name: "会心の秘薬", desc: "クリティカル率 +10%（このラン中）", baseCost: 25, apply: () => { game.runCritRateBonus += 10; } },
     { id: "critDmg1", name: "会心撃の秘薬", desc: "クリティカルダメージ +15%（このラン中）", baseCost: 25, apply: () => { game.runCritDamageBonus += 15; } },
     { id: "goldRun1", name: "強欲の秘薬", desc: "獲得金額 +50%（このラン中）", baseCost: 30, apply: () => { game.runGoldPctBonus += 50; } },
-    { id: "runN1", name: "疾風の秘薬", desc: "初期手数 +2（このラン中）", baseCost: 35, apply: () => { game.runNBonus += 2; } },
+    //{ id: "runN1", name: "疾風の秘薬", desc: "初期手数 +2（このラン中）", baseCost: 35, apply: () => { game.runNBonus += 2; } },
   ];
 
   function availableShopPool() {
