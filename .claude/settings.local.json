@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f \"/c/Users/aiki/Documents/magia-tower/.claude/launch.json\" 2>/dev/null *)"
+    ]
+  }
+}
