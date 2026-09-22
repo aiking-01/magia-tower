@@ -112,13 +112,23 @@
   /* ---- Battle ---- */
   /* wide desktop layout: enemy zone on the left, stats+log stacked on the right; collapses to a
      single column below ~860px so the game still works on a narrow window/mobile browser. */
+  /* the enemy column's height is synced to match the stats+log column exactly via JS
+     (syncEnemyVisualHeight), not CSS grid stretch: log-panel must stay a hard fixed height (see
+     below) rather than flex-growing, or its height goes back to ballooning with content, and
+     without a flex-grow anchor on the right column, pure-CSS stretch just leaves empty space
+     after the log panel instead of truly matching bottoms. JS measures the real, final layout
+     and sets an explicit px height on .enemy-visual, which is simpler and exact. */
   .battle-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
   .battle-side { display: flex; flex-direction: column; gap: 14px; }
+  /* .panel's own margin-bottom (used for normal block-flow spacing elsewhere) stacks on top of
+     this flex gap and was adding an extra 14px both between and after these two panels — that
+     was the actual source of the leftover gap under the log panel */
+  .battle-side .panel { margin-bottom: 0; }
   @media (max-width: 860px) {
     .battle-layout { grid-template-columns: 1fr; }
   }
   .enemy-visual {
-    height: min(300px, 32vh); border-radius: 10px; margin-bottom: 12px; position: relative; overflow: hidden;
+    height: min(220px, 28vh); border-radius: 10px; margin-top: 12px; position: relative; overflow: hidden;
     background: radial-gradient(circle at 50% 38%, #2c2739, #16141d 72%);
     border: 1px dashed #454057;
     display: flex; align-items: center; justify-content: center;
@@ -263,6 +273,8 @@
   .dz-info { min-width: 0; }
   .dz-name { font-weight: 700; font-size: 13px; }
   .dz-meta { font-size: 11px; color: var(--text-dim); }
+  .dz-active { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .dz-active-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 58px; text-align: center; }
   .dz-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .dz-btn {
     background: var(--panel); border: 1px solid #454057; color: var(--text);
@@ -470,7 +482,8 @@
         <div class="tree-points">所持ポイント <b id="deckUpgradePointsLabel">0</b></div>
       </div>
       <div class="tree-screen-title">デッキ強化</div>
-      <div class="deck-zone-sub">カードを選んで強化・削除できる。使うたびに次の費用が2倍になる。ここでの変更は次回以降の全てのランに永続的に反映される。</div>
+      <div class="deck-zone-sub">カードを選んで強化・削除できる。使うたびに次の費用が2倍になる。ここでの変更は次回以降の全てのランに永続的に反映される。「−／＋」で、所持しているカードのうち実際にデッキへ編成する枚数を調整できる。</div>
+      <div class="deck-zone-sub" id="deckZoneTotal" style="font-weight:800; color:var(--gold);"></div>
       <div class="deck-zone-list" id="deckZoneList"></div>
     </div>
   </div>
@@ -522,15 +535,17 @@
     <div class="battle-layout">
       <div class="panel">
         <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 100</span></div>
-        <!-- reserved for enemy artwork: JS toggles .boss and can later insert an <img> here -->
-        <div class="enemy-visual" id="enemyVisual"><span class="enemy-visual-hint">敵の見た目（準備中）</span></div>
         <div class="enemy-row">
           <div class="enemy-name" id="enemyName">見張りのモンスター</div>
           <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span></div>
         </div>
         <div class="bar-track"><div class="bar-fill" id="enemyBar" style="width:100%"></div></div>
+        <!-- reserved for enemy artwork: JS toggles .boss and can later insert an <img> here.
+             Last in the panel so its bottom edge lines up with the log panel's (height synced
+             to match via JS — see syncEnemyVisualHeight). -->
+        <div class="enemy-visual" id="enemyVisual"><span class="enemy-visual-hint">敵の見た目（準備中）</span></div>
       </div>
-      <div class="battle-side">
+      <div class="battle-side" id="battleSide">
         <div class="panel">
           <div class="stats-row">
             <div class="stat-box"><div class="stat-label">残り手数 n</div><div class="stat-value" id="statN">10</div></div>
@@ -629,6 +644,29 @@
   const FINAL_FLOOR = 100;
   // debug cards are off by default; open the file with ?debug=1 in the URL to enable them for testing
   const DEBUG_MODE = new URLSearchParams(location.search).get("debug") === "1";
+
+  // enemy roster: floors cycle through 9 regular monsters, the 10th floor of every 10-floor
+  // block is a mid-boss (the same art/name each time it comes around), and floor 100 exactly is
+  // the one-time final boss reveal.
+  const ENEMY_ROSTER = [
+    { name: "ゴブリン", art: "enemies/01-goblin.webp" },
+    { name: "ミミック", art: "enemies/02-mimic.webp" },
+    { name: "浮遊する眼魔", art: "enemies/03-eye.webp" },
+    { name: "スケルトン戦士", art: "enemies/04-skeleton.webp" },
+    { name: "キノコの妖精", art: "enemies/05-mushroom.webp" },
+    { name: "盗賊ネズミ", art: "enemies/06-rat.webp" },
+    { name: "腐食のコウモリ", art: "enemies/07-bat.webp" },
+    { name: "菌糸の蜘蛛", art: "enemies/08-spider.webp" },
+    { name: "亡霊茸", art: "enemies/09-mushroom-skeleton.webp" },
+  ];
+  const MID_BOSS = { name: "死の賭博師", art: "enemies/10-midboss.png" };
+  const FINAL_BOSS = { name: "塔の支配者（ラスボス）", art: "enemies/11-finalboss.png" };
+
+  function enemyForFloor(floor) {
+    if (floor === FINAL_FLOOR) return Object.assign({ isBoss: true }, FINAL_BOSS);
+    if (floor % 10 === 0) return Object.assign({ isBoss: true }, MID_BOSS);
+    return Object.assign({ isBoss: false }, ENEMY_ROSTER[(floor - 1) % 10]);
+  }
   const TAG_LABELS = { flame: "炎" };
   const TYPE_LABELS = { attack: "攻撃", draw: "ドロー", percent: "割合", special: "特殊", chain: "連鎖", buff: "バフ", poison: "毒" };
 
@@ -1039,6 +1077,32 @@
     return true;
   }
 
+  // deck building: owning a card (save.deckDefs' count, via the skill tree / card shop / base
+  // deck) is separate from actually bringing it into a run. `active` is how many of a card's
+  // owned copies are currently included in the battle deck; unset (older saves, or a card that's
+  // never been touched) means "all of them", matching the old behavior of always using everything owned.
+  function activeCount(def) {
+    const a = def.active == null ? def.count : def.active;
+    return Math.max(0, Math.min(def.count, a));
+  }
+  function totalActiveCards() { return save.deckDefs.reduce((sum, d) => sum + activeCount(d), 0); }
+  function totalActiveDamageCards() {
+    return save.deckDefs.filter((d) => DAMAGE_CARD_TYPES.includes(d.type)).reduce((sum, d) => sum + activeCount(d), 0);
+  }
+  function canDecreaseActive(def) {
+    if (activeCount(def) <= 0) return false;
+    if (totalActiveCards() <= MIN_DECK_SIZE) return false; // the actual battle deck needs a floor too
+    if (DAMAGE_CARD_TYPES.includes(def.type) && totalActiveDamageCards() <= 1) return false;
+    return true;
+  }
+  function canIncreaseActive(def) { return activeCount(def) < def.count; }
+  function adjustActive(def, delta) {
+    if (delta < 0 && !canDecreaseActive(def)) return;
+    if (delta > 0 && !canIncreaseActive(def)) return;
+    def.active = Math.max(0, Math.min(def.count, activeCount(def) + delta));
+    persistSave();
+  }
+
   function rankUpDeckDef(def) {
     const cost = rankUpCost(def);
     if (save.points < cost) return;
@@ -1079,8 +1143,10 @@
       runGoldPctBonus: 0,
       runNBonus: 0,
       // cards granted by skill-tree nodes are baked into save.deckDefs permanently when the
-      // node is purchased (see renderTree), so cloning save.deckDefs already includes them.
-      deckDefs: cloneDeckDefs(save.deckDefs),
+      // node is purchased (see renderTree), so cloning save.deckDefs already includes them; the
+      // count is then capped to however many of each the player has actually chosen to bring in
+      // (see activeCount/デッキ強化), not just how many they own.
+      deckDefs: cloneDeckDefs(save.deckDefs).map((d) => Object.assign(d, { count: activeCount(d) })).filter((d) => d.count > 0),
       deck: [],
       hand: [],
       gameOver: false,
@@ -1162,8 +1228,7 @@
     }
 
     el.log.innerHTML = "";
-    const enemyLabel = floor >= FINAL_FLOOR ? "塔の支配者" : "見張りのモンスター";
-    addLog(`${floor}階 — ${enemyLabel}が立ちはだかる。`, "info");
+    addLog(`${floor}階 — ${enemyForFloor(floor).name}が立ちはだかる。`, "info");
     showScreen("battle");
     renderBattle();
   }
@@ -1194,6 +1259,7 @@
     treeMapScaler: document.getElementById("treeMapScaler"),
 
     floorLabel: document.getElementById("floorLabel"),
+    battleSide: document.getElementById("battleSide"),
     enemyVisual: document.getElementById("enemyVisual"),
     enemyName: document.getElementById("enemyName"),
     enemyHpNow: document.getElementById("enemyHpNow"),
@@ -1214,6 +1280,7 @@
     shopGold: document.getElementById("shopGold"),
     shopOptions: document.getElementById("shopOptions"),
     deckZoneList: document.getElementById("deckZoneList"),
+    deckZoneTotal: document.getElementById("deckZoneTotal"),
     rerollBtn: document.getElementById("rerollBtn"),
     toNextFloorBtn: document.getElementById("toNextFloorBtn"),
     retreatBtn: document.getElementById("retreatBtn"),
@@ -1582,11 +1649,15 @@
   // deck strengthening screen: title-screen-only, permanent, paid with level-up points (save.points)
   function renderDeckZone() {
     el.deckUpgradePointsLabel.textContent = fmt(save.points);
+    el.deckZoneTotal.textContent = `編成デッキ: ${fmt(totalActiveCards())}枚`;
     el.deckZoneList.innerHTML = "";
     save.deckDefs.forEach((def) => {
       const rCost = rankUpCost(def);
       const dCost = deleteCost(def);
       const deletable = canDeleteCard(def);
+      const active = activeCount(def);
+      const canDec = canDecreaseActive(def);
+      const canInc = canIncreaseActive(def);
       const row = document.createElement("div");
       row.className = "deck-zone-row";
       const rankEligible = def.type !== "chain" && def.type !== "special" && def.type !== "poison" && !def.randomValues;
@@ -1594,7 +1665,12 @@
       row.innerHTML = `
         <div class="dz-info">
           <div class="dz-name">${def.name}</div>
-          <div class="dz-meta">${TYPE_LABELS[def.type] || def.type} / ${def.count}枚${rankLabel}</div>
+          <div class="dz-meta">${TYPE_LABELS[def.type] || def.type} / 所持${def.count}枚${rankLabel}</div>
+        </div>
+        <div class="dz-active">
+          <button class="dz-btn" ${canDec ? "" : "disabled"} data-action="activeDown">−</button>
+          <span class="dz-active-count">編成 ${active}/${def.count}</span>
+          <button class="dz-btn" ${canInc ? "" : "disabled"} data-action="activeUp">＋</button>
         </div>
         <div class="dz-actions">
           <button class="dz-btn" ${rankEligible ? "" : "disabled"} data-action="rank">強化 ${fmt(rCost)}pt</button>
@@ -1603,6 +1679,8 @@
       `;
       const rankBtn = row.querySelector('[data-action="rank"]');
       const deleteBtn = row.querySelector('[data-action="delete"]');
+      const activeDownBtn = row.querySelector('[data-action="activeDown"]');
+      const activeUpBtn = row.querySelector('[data-action="activeUp"]');
       if (rankEligible) {
         rankBtn.disabled = save.points < rCost;
         rankBtn.addEventListener("click", () => {
@@ -1617,6 +1695,8 @@
           renderDeckZone();
         });
       }
+      if (canDec) activeDownBtn.addEventListener("click", () => { adjustActive(def, -1); renderDeckZone(); });
+      if (canInc) activeUpBtn.addEventListener("click", () => { adjustActive(def, 1); renderDeckZone(); });
       el.deckZoneList.appendChild(row);
     });
   }
@@ -1703,12 +1783,16 @@
 
   // ---------------- Render: battle ----------------
   function renderBattle() {
-    const isBoss = game.floor >= FINAL_FLOOR;
+    const enemy = enemyForFloor(game.floor);
     el.floorLabel.textContent = game.floor > FINAL_FLOOR ? `階層 ${game.floor}（エンドレス）` : `階層 ${game.floor} / ${FINAL_FLOOR}`;
-    el.enemyName.textContent = isBoss ? "塔の支配者（ラスボス）" : "見張りのモンスター";
-    el.enemyName.classList.toggle("boss", isBoss);
-    el.enemyBar.classList.toggle("boss", isBoss);
-    el.enemyVisual.classList.toggle("boss", isBoss);
+    el.enemyName.textContent = enemy.name;
+    el.enemyName.classList.toggle("boss", enemy.isBoss);
+    el.enemyBar.classList.toggle("boss", enemy.isBoss);
+    el.enemyVisual.classList.toggle("boss", enemy.isBoss);
+    if (el.enemyVisual.dataset.art !== enemy.art) {
+      el.enemyVisual.dataset.art = enemy.art;
+      el.enemyVisual.innerHTML = `<img src="${enemy.art}" alt="${enemy.name}">`;
+    }
     el.enemyHpNow.textContent = fmt(game.enemyHp);
     el.enemyHpMax.textContent = fmt(game.enemyHpMax);
     el.enemyBar.style.width = Math.max(0, (game.enemyHp / game.enemyHpMax) * 100) + "%";
@@ -1817,7 +1901,28 @@
         toFlip.forEach((inner) => inner.classList.add("flipped"));
       }, CARD_FLIP_DELAY_MS);
     }
+
+    syncEnemyVisualHeight();
   }
+
+  // makes the enemy art zone's bottom edge land exactly on the log panel's bottom edge: measures
+  // the stats+log column's real rendered height and the enemy panel's own non-art content height,
+  // then sets an explicit px height on .enemy-visual to make up the difference. Plain CSS
+  // stretch/flex-grow can't do this without either leaving a gap after the log panel or letting
+  // the log panel's own height depend on its (scrollable, unbounded) content again.
+  function syncEnemyVisualHeight() {
+    if (window.matchMedia("(max-width: 860px)").matches) {
+      el.enemyVisual.style.height = ""; // stacked single-column layout: nothing to match
+      return;
+    }
+    const panel = el.enemyVisual.parentElement;
+    const otherContentHeight = panel.scrollHeight - el.enemyVisual.offsetHeight;
+    const targetTotal = el.battleSide.getBoundingClientRect().height;
+    el.enemyVisual.style.height = Math.max(160, targetTotal - otherContentHeight) + "px";
+  }
+  window.addEventListener("resize", () => {
+    if (document.getElementById("screen-battle").classList.contains("active")) syncEnemyVisualHeight();
+  });
 
   // ---------------- Render: home ----------------
   function renderHome() {
