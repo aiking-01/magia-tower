@@ -64,7 +64,17 @@
     });
   }
 
-  const ATK_TRUNK = buildChain("atk", "atk", 1, null, [
+  // the tree's single entry point: cheap (1pt) on purpose so it's never really a paywall, and it
+  // refunds more than it costs (+5pt) -- its real job is just gating the three trunks below so a
+  // brand new save shows one clear first step instead of three branches all competing for
+  // attention at once. Not part of any buildChain() lineage since it has no "previous" node.
+  const ROOT_NODE = {
+    id: "root", branch: "root", tier: 0, requires: null,
+    label: "起点", desc: "基本強化を開放。レベルアップポイント+5",
+    cost: 1, kind: "grantPoints", pointsGrant: 5,
+  };
+
+  const ATK_TRUNK = buildChain("atk", "atk", 1, "root", [
     { label: "打撃の基礎", desc: "基礎攻撃力 +1", cost: 2, effect: { atk: 1 } },
     { label: "猛る力", desc: "基礎攻撃力 +2", cost: 6, effect: { atk: 2 } },
   ]);
@@ -76,7 +86,7 @@
     { label: "阿修羅の怒り", desc: "基礎攻撃力 +64", cost: 300, effect: { atk: 64 } },
     { label: "破邪の顕現", desc: "基礎攻撃力 +128", cost: 600, effect: { atk: 128 } },
     { label: "神殺しの一撃", desc: "基礎攻撃力 +256", cost: 1200, effect: { atk: 256 } },
-    { label: "終末の力", desc: "基礎攻撃力 +512。「力の暴走」を追加", cost: 2400, effect: { atk: 512 }, kind: "startCards", cards: [{ type: "special", name: "力の暴走", calc: "atk2" }] },
+    { label: "終末の力", desc: "基礎攻撃力 +512・累乗 +0.25", cost: 2400, effect: { atk: 512, exponent: 0.25 } },
   ]);
   // fork 2: 精鋭の記憶 lineage (adds strong attack cards to the starting deck; old trunk tier-4 node prepended)
   const ATK_ARSENAL = buildChain("atkA", "atk", 3, ATK_FORK_ROOT, [
@@ -95,10 +105,10 @@
     { label: "賭けの妙技", desc: "「四凶の賭け」をデッキに追加", cost: 75, kind: "startCards", cards: [{ type: "buff", name: "四凶の賭け", randomValues: [4, 0.5] }] },
     { label: "毒刃の伝授", desc: "「猛毒の一撃」をデッキに追加", cost: 200, kind: "startCards", cards: [{ type: "poison", name: "猛毒の一撃" }] },
     { label: "会心の連鎖", desc: "「連撃の極致」をデッキに追加", cost: 800, kind: "startCards", cards: [{ type: "special", name: "連撃の極致", calc: "critStreak" }] },
-    { label: "神域への到達", desc: "「神域の一撃」をデッキに追加", cost: 3000, kind: "startCards", cards: [{ type: "special", name: "神域の一撃", calc: "pow1_5" }] },
+    { label: "神域への到達", desc: "累乗 +0.25", cost: 3000, effect: { exponent: 0.25 } },
   ]);
 
-  const N_TRUNK = buildChain("n", "n", 1, null, [
+  const N_TRUNK = buildChain("n", "n", 1, "root", [
     { label: "不屈の魂", desc: "初期手札 +1", cost: 2, effect: { hand: 1 } },
     { label: "会心の芽生え", desc: "クリティカル率 +5%", cost: 6, effect: { critRate: 5 } },
   ]);
@@ -118,15 +128,18 @@
     { label: "会心撃の暴威", desc: "会心ダメージ +6%", cost: 540, effect: { critDamage: 6 } },
     { label: "会心撃の極致", desc: "会心ダメージ +4%", cost: 1100, effect: { critDamage: 4 } },
   ]);
-  // fork 3: the original initial-turns/hand lineage, relocated here unchanged in content
-  const N_HAND = buildChain("nHand", "n", 3, N_FORK_ROOT, [
-    { label: "不屈の一歩", desc: "初期手数 +1", cost: 100, effect: { n: 1 } },
-    { label: "不屈の意志", desc: "初期手数 +1", cost: 220, effect: { n: 1 } },
-    { label: "不屈の血統", desc: "初期手数 +2", cost: 460, effect: { n: 2 } },
-    { label: "大器の魂", desc: "初期手数+3・手札+1。「渾身の一撃」を追加", cost: 950, effect: { n: 3, hand: 1 }, kind: "startCards", cards: [{ type: "special", name: "渾身の一撃", calc: "n" }] },
+  // fork 3: base multiplier -- the floor of the damage multiplier (baseMult + Σ buff bonus)^exponent,
+  // so the exponent pays off on every hit, not only buffed ones. Keeps the old "nHand" id prefix so
+  // saves that bought the former initial-turns nodes carry over onto these same positions.
+  const N_MULT = buildChain("nHand", "n", 3, N_FORK_ROOT, [
+    { label: "闘気の芽生え", desc: "基礎倍率 +0.1", cost: 100, effect: { baseMult: 0.1 } },
+    { label: "闘気の昂り", desc: "基礎倍率 +0.1", cost: 220, effect: { baseMult: 0.1 } },
+    { label: "闘気の奔流", desc: "基礎倍率 +0.2", cost: 460, effect: { baseMult: 0.2 } },
+    { label: "闘気の極致", desc: "基礎倍率 +0.3", cost: 950, effect: { baseMult: 0.3 } },
+    { label: "大器の魂", desc: "初期手札 +1。「渾身の一撃」を追加", cost: 2000, effect: { hand: 1 }, kind: "startCards", cards: [{ type: "special", name: "渾身の一撃", calc: "n" }] },
   ]);
 
-  const GOLD_TRUNK = buildChain("gold", "gold", 1, null, [
+  const GOLD_TRUNK = buildChain("gold", "gold", 1, "root", [
     { label: "商才の芽生え", desc: "獲得金額 +8%", cost: 2, effect: { goldPct: 8 } },
     { label: "商才の開花", desc: "獲得金額 +8%", cost: 6, effect: { goldPct: 8 } },
   ]);
@@ -160,8 +173,9 @@
   ]);
 
   const NODES = [].concat(
+    [ROOT_NODE],
     ATK_TRUNK, ATK_POWER, ATK_ARSENAL, ATK_FLAME,
-    N_TRUNK, N_CRIT, N_CRITDMG, N_HAND,
+    N_TRUNK, N_CRIT, N_CRITDMG, N_MULT,
     GOLD_TRUNK, GOLD_ECON, GOLD_SHOP, GOLD_FORTUNE
   );
 
@@ -215,7 +229,7 @@
   // the n trunk forks the same way as atk/gold: 3 further directions, spiraling apart around its own angle
   Object.assign(TREE_POS, spiralChain(N_CRIT.map((n) => n.id), N_TRUNK_END, N_TRUNK_END_ANGLE - FORK_SPREAD, -FORK_CURL, FORK_STEP, FORK_STEP));
   Object.assign(TREE_POS, spiralChain(N_CRITDMG.map((n) => n.id), N_TRUNK_END, N_TRUNK_END_ANGLE, FORK_CURL * 0.4, FORK_STEP, FORK_STEP));
-  Object.assign(TREE_POS, spiralChain(N_HAND.map((n) => n.id), N_TRUNK_END, N_TRUNK_END_ANGLE + FORK_SPREAD, FORK_CURL, FORK_STEP, FORK_STEP));
+  Object.assign(TREE_POS, spiralChain(N_MULT.map((n) => n.id), N_TRUNK_END, N_TRUNK_END_ANGLE + FORK_SPREAD, FORK_CURL, FORK_STEP, FORK_STEP));
 
   // each of the atk/gold trunks forks again into 3 further directions, spiraling apart around its own angle
   Object.assign(TREE_POS, spiralChain(ATK_POWER.map((n) => n.id), ATK_TRUNK_END, ATK_TRUNK_END_ANGLE - FORK_SPREAD, -FORK_CURL, FORK_STEP, FORK_STEP));
@@ -223,7 +237,9 @@
   Object.assign(TREE_POS, spiralChain(ATK_FLAME.map((n) => n.id), ATK_TRUNK_END, ATK_TRUNK_END_ANGLE + FORK_SPREAD, FORK_CURL, FORK_STEP, FORK_STEP));
   Object.assign(TREE_POS, spiralChain(GOLD_SHOP.map((n) => n.id), GOLD_TRUNK_END, GOLD_TRUNK_END_ANGLE - FORK_SPREAD, -FORK_CURL, FORK_STEP, FORK_STEP));
   Object.assign(TREE_POS, spiralChain(GOLD_ECON.map((n) => n.id), GOLD_TRUNK_END, GOLD_TRUNK_END_ANGLE, FORK_CURL * 0.4, FORK_STEP, FORK_STEP));
-  Object.assign(TREE_POS, spiralChain(GOLD_FORTUNE.map((n) => n.id), GOLD_TRUNK_END, GOLD_TRUNK_END_ANGLE + FORK_SPREAD, FORK_CURL, FORK_STEP, FORK_STEP));
+  // half the usual curl: at full curl this fork's tip (王家の後ろ盾) swung up into the atk branch's
+  // tip (終末の力) and the two nodes drew on top of each other
+  Object.assign(TREE_POS, spiralChain(GOLD_FORTUNE.map((n) => n.id), GOLD_TRUNK_END, GOLD_TRUNK_END_ANGLE + FORK_SPREAD, FORK_CURL * 0.5, FORK_STEP, FORK_STEP));
 
   // shared by the basic tree and the reincarnation panel: tightly re-fits a canvas (shifting
   // every position, including the origin, in place) around whatever a node layout actually
@@ -250,6 +266,7 @@
       panelLevels: {}, // reincarnation panel: the one thing that survives a reincarnation reset
       panelSpecials: {}, // one-shot, very expensive panel purchases (also survives reincarnation)
       transcendUnlocked: false, // becomes true forever the first time the final boss is defeated
+      cardShopPurchases: {}, // card shop item id -> times bought since the last reincarnation (drives its rising price)
     };
   }
   function loadSave() {
@@ -262,6 +279,7 @@
         unlockedNodes: Object.assign({}, parsed.unlockedNodes || {}),
         panelLevels: Object.assign({}, parsed.panelLevels || {}),
         panelSpecials: Object.assign({}, parsed.panelSpecials || {}),
+        cardShopPurchases: Object.assign({}, parsed.cardShopPurchases || {}),
         // draw cards are disabled for now; strip any that survived in an older save
         deckDefs: loadedDeckDefs.filter((d) => d.type !== "draw"),
       });
@@ -303,15 +321,17 @@
   const PANEL_CATEGORIES = [
     // perLevelGrowth: each successive tier's own contribution doubles (tier1 +1, tier2 +2, tier3 +4, ...)
     // instead of every tier adding the same flat amount
-    // 8 branches share the circle evenly (360/8 = 45 degrees apart): the 6 below, plus the
+    // 9 branches share the circle evenly (360/9 = 40 degrees apart): the 7 below, plus the
     // shop chain and the specials chain defined further down
     { id: "panelAtk", label: "継承の力", desc: "基礎攻撃力", key: "atk", perLevel: 1, perLevelGrowth: 2, baseCost: 5, costMult: 1.4, maxLevel: 20, angle: 90 },
-    { id: "panelGold", label: "継承の福運", desc: "獲得金額 %", key: "goldPct", perLevel: 8, baseCost: 8, costMult: 1.4, maxLevel: 16, angle: 135 },
-    { id: "panelStartPoints", label: "継承の礎", desc: "転生後の開始pt", key: "startPoints", perLevel: 15, baseCost: 6, costMult: 1.4, maxLevel: 18, angle: 180 },
-    { id: "panelBuff", label: "継承の闘気", desc: "バフカードの倍率", key: "buffAdd", perLevel: 0.1, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 225 },
-    { id: "panelCritDmg", label: "継承の会心", desc: "クリティカルダメージ %", key: "critDmgAdd", perLevel: 5, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 270 },
+    { id: "panelGold", label: "継承の福運", desc: "獲得金額 %", key: "goldPct", perLevel: 8, baseCost: 8, costMult: 1.4, maxLevel: 16, angle: 130 },
+    { id: "panelStartPoints", label: "継承の礎", desc: "転生後の開始pt", key: "startPoints", perLevel: 15, baseCost: 6, costMult: 1.4, maxLevel: 18, angle: 170 },
+    { id: "panelBuff", label: "継承の闘気", desc: "バフカードの倍率", key: "buffAdd", perLevel: 0.1, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 210 },
+    { id: "panelCritDmg", label: "継承の会心", desc: "クリティカルダメージ %", key: "critDmgAdd", perLevel: 5, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 250 },
     // エンドレス到達階から得る転生ポイントそのものを増やす、周回を重ねるほど効いてくる複利的な枝
-    { id: "panelTranscendGain", label: "継承の記憶", desc: "転生ポイント獲得 %", key: "transcendGainPct", perLevel: 8, baseCost: 10, costMult: 1.4, maxLevel: 16, angle: 315 },
+    { id: "panelTranscendGain", label: "継承の記憶", desc: "転生ポイント獲得 %", key: "transcendGainPct", perLevel: 8, baseCost: 10, costMult: 1.4, maxLevel: 16, angle: 290 },
+    // small steps on purpose: the exponent compounds on every hit, so even +0.02 is a real jump late on
+    { id: "panelExponent", label: "継承の累乗", desc: "累乗", key: "exponent", perLevel: 0.02, baseCost: 20, costMult: 1.4, maxLevel: 20, angle: 330 },
   ];
   function panelLevel(cat) { return save.panelLevels[cat.id] || 0; }
   // the amount a SPECIFIC tier (1-indexed) of a category contributes; flat (perLevel) unless the
@@ -355,12 +375,12 @@
   // a chain like the categories above, but each tier unlocks one more CARD_SHOP_POOL slot instead
   // of a numeric bonus — "ショップ開放をツリーにして購入できるカードを増やす" — priced far below
   // the specials above so the first tier (which unlocks the shop itself) is an easy early grab
-  const PANEL_SHOP_CHAIN = { id: "panelShop", label: "商人との契約", baseCost: 300, costMult: 3, maxLevel: CARD_SHOP_POOL.length, angle: 0 };
+  const PANEL_SHOP_CHAIN = { id: "panelShop", label: "商人との契約", baseCost: 300, costMult: 3, maxLevel: CARD_SHOP_POOL.length, angle: 10 };
   function shopUnlockedCount() { return panelLevel(PANEL_SHOP_CHAIN); }
   function cardShopUnlocked() { return shopUnlockedCount() > 0; }
 
   // layout: every category (plus the shop chain) is a long spiraling chain radiating from the
-  // core at its own angle (8 directions total, 45 degrees apart); the specials get their own
+  // core at its own angle (9 directions total, 40 degrees apart); the specials get their own
   // dedicated direction with a longer step so they read as a distinct, prominent mini-branch.
   const PANEL_CORE = { x: 0, y: 0 };
   const PANEL_POS = { core: PANEL_CORE };
@@ -374,12 +394,12 @@
   PANEL_SHOP_CHAIN.nodeIds = [];
   for (let i = 1; i <= PANEL_SHOP_CHAIN.maxLevel; i++) PANEL_SHOP_CHAIN.nodeIds.push(PANEL_SHOP_CHAIN.id + "_" + i);
   Object.assign(PANEL_POS, spiralChain(PANEL_SHOP_CHAIN.nodeIds, PANEL_CORE, PANEL_SHOP_CHAIN.angle, PANEL_CURL, PANEL_STEP, PANEL_STEP));
-  const PANEL_SPECIAL_ANGLE = 45;
+  const PANEL_SPECIAL_ANGLE = 50;
   const PANEL_SPECIAL_STEP = 220;
   Object.assign(PANEL_POS, spiralChain(PANEL_SPECIALS.map((s) => s.id), PANEL_CORE, PANEL_SPECIAL_ANGLE, 0, PANEL_SPECIAL_STEP, PANEL_SPECIAL_STEP));
 
-  // spider-web rings: every branch that shares the PANEL_STEP radius scale (the 6 categories plus
-  // the shop chain — 7 spokes, evenly spaced) gets connected to its angular neighbor at each tier
+  // spider-web rings: every branch that shares the PANEL_STEP radius scale (the 7 categories plus
+  // the shop chain — 8 spokes, evenly spaced) gets connected to its angular neighbor at each tier
   // it has a node for, forming concentric polygons around the core — straight spokes (above) plus
   // these rings is exactly a web's radial threads + circular threads. A strand lights up once both
   // ends are owned. Branches shorter than the ring's tier (the shop chain only goes to 4) simply
@@ -391,6 +411,7 @@
     PANEL_CATEGORIES.find((c) => c.id === "panelBuff"),
     PANEL_CATEGORIES.find((c) => c.id === "panelCritDmg"),
     PANEL_CATEGORIES.find((c) => c.id === "panelTranscendGain"),
+    PANEL_CATEGORIES.find((c) => c.id === "panelExponent"),
     PANEL_SHOP_CHAIN,
   ];
   function panelWebStrands() {
@@ -507,7 +528,7 @@
       enemyHp: 0,
       enemyHpMax: 0,
       n: 0,
-      buffMultiplier: 1,
+      buffBonus: 0, // Σ(each buff card's multiplier − 1) waiting for the next attack/special card
       gold: treeBonus("startGold"),
       runAtkBonus: 0,
       runHandBonus: 0,
@@ -542,6 +563,19 @@
     const node = NODES.find((n) => n.kind === "cheapUpgrade");
     return node && save.unlockedNodes[node.id] ? 1.5 : 2;
   }
+  // damage = (card power + atk) × (baseMult + Σ buff bonus)^exponent × crit.
+  // Buffs add inside the base (so stacking them in one turn grows linearly); the exponential,
+  // incremental-style growth comes from the exponent, which only rises through progression
+  // (tree end nodes + the reincarnation panel), never from cards played within a turn.
+  function currentBaseMult() { return 1 + treeBonus("baseMult"); }
+  function currentExponent() { return 1 + treeBonus("exponent") + panelBonus("exponent"); }
+  function damageMultiplier() {
+    return Math.pow(Math.max(MIN_BUFF_MULTIPLIER, currentBaseMult() + game.buffBonus), currentExponent());
+  }
+  // the part of damageMultiplier() that applies with no buff stored -- used for hand previews, which
+  // (as before) show a card's own damage without whatever buff happens to be pending
+  function unbuffedDamageMultiplier() { return Math.pow(currentBaseMult(), currentExponent()); }
+
   const BASE_CRIT_MULT = 1.5;
   const TREE_CRIT_DAMAGE_CAP = 30; // the skill tree alone can never push critDamage past this
   // panel bonuses (継承の会心・会心の覚醒) are a permanent, post-transcend layer and are
@@ -594,7 +628,7 @@
     game.enemyHpMax = computeFloorHp(floor);
     game.enemyHp = game.enemyHpMax;
     game.n = currentStartN();
-    game.buffMultiplier = 1;
+    game.buffBonus = 0;
     game.enemyPoisoned = false; // a fresh enemy each floor, never carries poison over
     game.critStreak = 0;
     game.gameOver = false;
@@ -685,7 +719,38 @@
     panelMap: document.getElementById("panelMap"),
     panelScrollWrap: document.getElementById("panelScrollWrap"),
     panelMapScaler: document.getElementById("panelMapScaler"),
+
+    confirmOverlay: document.getElementById("confirmOverlay"),
+    confirmMessage: document.getElementById("confirmMessage"),
+    confirmOkBtn: document.getElementById("confirmOkBtn"),
+    confirmCancelBtn: document.getElementById("confirmCancelBtn"),
   };
+
+  // in-page stand-in for window.confirm(): some embedded/in-app browser views auto-dismiss the
+  // native dialog (it resolves to false immediately without ever being shown), which made the
+  // 転生/reset buttons look completely unresponsive there. Resolves true/false like confirm() did.
+  function showConfirm(message) {
+    return new Promise((resolve) => {
+      el.confirmMessage.textContent = message;
+      el.confirmOverlay.classList.add("active");
+      function cleanup(result) {
+        el.confirmOverlay.classList.remove("active");
+        el.confirmOkBtn.removeEventListener("click", onOk);
+        el.confirmCancelBtn.removeEventListener("click", onCancel);
+        el.confirmOverlay.removeEventListener("click", onOverlay);
+        document.removeEventListener("keydown", onKey);
+        resolve(result);
+      }
+      function onOk() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+      function onOverlay(e) { if (e.target === el.confirmOverlay) cleanup(false); }
+      function onKey(e) { if (e.key === "Escape") cleanup(false); }
+      el.confirmOkBtn.addEventListener("click", onOk);
+      el.confirmCancelBtn.addEventListener("click", onCancel);
+      el.confirmOverlay.addEventListener("click", onOverlay);
+      document.addEventListener("keydown", onKey);
+    });
+  }
 
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
@@ -714,6 +779,50 @@
     el.log.prepend(line);
   }
 
+  // floating damage numbers are drawn from pre-rendered glyph IMAGES (assets/dmg-font/), not a
+  // web font: the licensed font they come from forbids shipping the font file itself anywhere a
+  // third party could extract it (a @font-face file is trivially saveable from the browser cache/
+  // network tab, which is exactly what that clause rules out). Only these small PNGs -- one per
+  // character actually needed here -- ever leave this machine; see assets/dmg-font/LICENSE-NOTE.txt.
+  // Each PNG shares one common baseline/height from rasterization, so different glyphs' natural
+  // proportions (e.g. "," small and low, "C" full-height) still line up when mixed in one string.
+  const DMG_GLYPH_FILES = {
+    "0": "d0", "1": "d1", "2": "d2", "3": "d3", "4": "d4", "5": "d5", "6": "d6", "7": "d7", "8": "d8", "9": "d9",
+    ",": "comma", ".": "dot", "-": "minus", "+": "plus", "E": "E",
+    "C": "C", "R": "R", "I": "I", "T": "T", "A": "A", "L": "L",
+  };
+  const DMG_GLYPH_ASPECT = {
+    d0: 0.608, d1: 0.395, d2: 0.608, d3: 0.608, d4: 0.641, d5: 0.611, d6: 0.608, d7: 0.611, d8: 0.608, d9: 0.608,
+    comma: 0.286, dot: 0.286, minus: 0.379, plus: 0.482, E: 0.625,
+    A: 0.711, C: 0.611, I: 0.352, L: 0.625, R: 0.658, T: 0.654,
+  };
+  const DMG_CHAR_BOUNCE_STAGGER_MS = 45; // per-character delay so the string bounces in left-to-right, like a wave
+  // the WHOLE string's stagger is kept within this total span so the last character's bounce
+  // never lands after the hold/fade has already started (see DMG_LIFETIME_MS below). For a short
+  // string the per-character gap is the full 45ms above; a longer string (e.g. "CRITICAL-1,234")
+  // shrinks that gap so every character still gets its OWN distinct delay -- capping the delay
+  // instead of shrinking the gap would bunch every character past a fixed count into one lockstep
+  // group, which reads as the wave animation abruptly stopping partway through the string.
+  const DMG_CHAR_STAGGER_SPAN_MS = 200;
+  const DMG_LIFETIME_MS = 1100; // total on-screen time for a damage number; keep in sync with style.css's dmgHoldFade duration
+  function appendDmgChars(container, text) {
+    const chars = [...text];
+    const gap = chars.length > 1 ? Math.min(DMG_CHAR_BOUNCE_STAGGER_MS, DMG_CHAR_STAGGER_SPAN_MS / (chars.length - 1)) : 0;
+    chars.forEach((ch, i) => {
+      const file = DMG_GLYPH_FILES[ch];
+      const span = document.createElement("span");
+      if (file) {
+        span.className = "dmg-char";
+        span.style.setProperty("--dmg-glyph", `url("assets/dmg-font/${file}.png")`);
+        span.style.setProperty("--dmg-aspect", DMG_GLYPH_ASPECT[file]);
+        span.style.animationDelay = (i * gap) + "ms";
+      } else {
+        span.textContent = ch; // fallback for any character outside the rasterized set above
+      }
+      container.appendChild(span);
+    });
+  }
+
   function floatDamage(amount, isCrit) {
     const rect = el.enemyVisual.getBoundingClientRect();
     const f = document.createElement("div");
@@ -729,12 +838,21 @@
       cls += " dmg-big";
     }
     f.className = cls;
-    f.textContent = (isCrit ? "会心！-" : "-") + fmt(amount);
-    f.style.left = rect.left + "px";
-    f.style.width = rect.width + "px";
-    f.style.top = (rect.top + rect.height / 2 - 20) + "px";
+    appendDmgChars(f, (isCrit ? "CRITICAL-" : "-") + fmt(amount));
+    // land at a random spot over the enemy art each hit (instead of always dead center) so
+    // consecutive hits don't just stack on top of each other now that the number no longer
+    // floats away; margin keeps it clear of the art's own edges.
+    const marginX = rect.width * 0.18;
+    const marginY = rect.height * 0.18;
+    const randX = rect.left + marginX + Math.random() * Math.max(0, rect.width - marginX * 2);
+    const randY = rect.top + marginY + Math.random() * Math.max(0, rect.height - marginY * 2);
+    f.style.left = randX + "px";
+    f.style.top = randY + "px";
     document.body.appendChild(f);
-    setTimeout(() => f.remove(), 2000);
+    // matches .dmg-float's dmgHoldFade animation duration in style.css (bounce, then a brief
+    // hold, then a quick fade) -- removal is timed to land exactly as that fade reaches 0 so
+    // there's no visible pop-off.
+    setTimeout(() => f.remove(), DMG_LIFETIME_MS);
     impactEffects(isCrit, isHuge);
   }
 
@@ -760,7 +878,9 @@
   // shared between resolveCardEffect's "special" branch and the hand-display preview label, so
   // what a card promises in your hand is exactly what it deals when played
   function specialCardRaw(card) {
-    if (card.calc === "n") return game.n;
+    // 渾身の一撃: atk × remaining moves -- strongest when played early. Moves no longer grow past
+    // BASE_N, so the old "damage = moves left" (at most 5) had become useless.
+    if (card.calc === "n") return currentAtk() * game.n;
     if (card.calc === "critStreak") return currentAtk() * Math.max(1, game.critStreak); // scales with consecutive crits landed so far
     if (card.calc === "pow1_5") return Math.pow(currentAtk(), 1.5); // superlinear late-game scaling
     return currentAtk() * currentAtk(); // "atk2" (legacy default)
@@ -774,33 +894,38 @@
       : effectiveValue(card) + currentAtk();
   }
 
+  // additive stacking can push (baseMult + Σ buff bonus) to zero or below (e.g. two ×0.5 gamble
+  // misses in a row); floor it so the next attack still deals a sliver instead of 0 / negative damage
+  const MIN_BUFF_MULTIPLIER = 0.1;
+
   // Resolves a single card's effect (damage/draw/buff/chain). Does not touch hand/deck/n bookkeeping,
   // so it can be reused both for a directly-played card and for cards triggered by a chain card.
   function resolveCardEffect(card) {
     if (card.type === "attack") {
-      const mult = game.buffMultiplier;
+      const mult = damageMultiplier();
       const isCrit = card.forceCrit || rollCrit(card.critRateBonus);
       const critMult = isCrit ? critMultiplier(card.critDmgBonus) : 1;
       const dmg = Math.ceil(attackBaseDamage(card) * mult * critMult);
       game.enemyHp = Math.max(0, game.enemyHp - dmg);
       game.critStreak = isCrit ? game.critStreak + 1 : 0;
-      const buffNote = mult > 1 ? `（バフ×${fmtMult(mult)}）` : "";
-      if (isCrit) addLog(`${card.name} で会心の一撃！ ${fmt(dmg)} ダメージ！${buffNote}`, "dmg crit");
-      else addLog(`${card.name} で ${fmt(dmg)} ダメージ！${buffNote}`, "dmg");
+      const multNote = mult !== 1 ? `（倍率×${fmtMult(mult)}）` : "";
+      if (isCrit) addLog(`${card.name} で会心の一撃！ ${fmt(dmg)} ダメージ！${multNote}`, "dmg crit");
+      else addLog(`${card.name} で ${fmt(dmg)} ダメージ！${multNote}`, "dmg");
       floatDamage(dmg, isCrit);
-      game.buffMultiplier = 1;
+      game.buffBonus = 0;
     } else if (card.type === "percent") {
-      const mult = game.buffMultiplier;
+      // percent damage ignores buffs and leaves any stored buff in place for the next attack: a
+      // buffed "% of max HP" hit would one-shot any floor however far enemy HP has scaled, which
+      // skips the whole point of an incremental HP curve
       const isCrit = rollCrit();
       const critMult = isCrit ? critMultiplier() : 1;
       const pct = effectiveValue(card);
-      const dmg = Math.ceil(game.enemyHpMax * pct * mult * critMult);
+      const dmg = Math.ceil(game.enemyHpMax * pct * critMult);
       game.enemyHp = Math.max(0, game.enemyHp - dmg);
       game.critStreak = isCrit ? game.critStreak + 1 : 0;
       const critNote = isCrit ? "会心の一撃！ " : "";
       addLog(`${card.name}：${critNote}敵の最大HPの${Math.round(pct * 100)}%、${fmt(dmg)} ダメージ！`, isCrit ? "percent crit" : "percent");
       floatDamage(dmg, isCrit);
-      game.buffMultiplier = 1;
     } else if (card.type === "draw") {
       const count = effectiveValue(card);
       addLog(`${card.name}：カードを${count}枚引いた`, "info");
@@ -811,8 +936,11 @@
       // (継承の闘気) adds a permanent flat bonus on top of whatever this specific card rolls
       const cardMult = card.randomValues ? card.randomValues[Math.floor(Math.random() * card.randomValues.length)] : effectiveValue(card);
       const appliedMult = cardMult + panelBonus("buffAdd");
-      game.buffMultiplier *= appliedMult;
-      addLog(`${card.name}：次の攻撃カードのダメージが×${fmtMult(game.buffMultiplier)}に！`, "buff");
+      // buffs stack additively on their bonus part (see damageMultiplier()), so ×2 then ×3 adds +3
+      // (not ×6), and a gamble's ×0.5 miss really subtracts -- floored so repeated misses can't dig
+      // a hole that later buffs first have to climb out of
+      game.buffBonus = Math.max(MIN_BUFF_MULTIPLIER - currentBaseMult(), game.buffBonus + (appliedMult - 1));
+      addLog(`${card.name}：次の攻撃カードの倍率が×${fmtMult(damageMultiplier())}に！`, "buff");
     } else if (card.type === "poison") {
       // a status flag, not a stacking counter: playing this again while already poisoned does nothing extra
       if (game.enemyPoisoned) {
@@ -822,18 +950,18 @@
         addLog(`${card.name}：敵を猛毒状態にした！`, "buff");
       }
     } else if (card.type === "special") {
-      const mult = game.buffMultiplier;
+      const mult = damageMultiplier();
       const isCrit = rollCrit();
       const critMult = isCrit ? critMultiplier() : 1;
       const raw = specialCardRaw(card);
       const dmg = Math.ceil(raw * mult * critMult);
       game.enemyHp = Math.max(0, game.enemyHp - dmg);
       game.critStreak = isCrit ? game.critStreak + 1 : 0;
-      const buffNote = mult > 1 ? `（バフ×${fmtMult(mult)}）` : "";
-      if (isCrit) addLog(`${card.name} で会心の一撃！ ${fmt(dmg)} ダメージ！${buffNote}`, "dmg crit");
-      else addLog(`${card.name} で ${fmt(dmg)} ダメージ！${buffNote}`, "dmg");
+      const multNote = mult !== 1 ? `（倍率×${fmtMult(mult)}）` : "";
+      if (isCrit) addLog(`${card.name} で会心の一撃！ ${fmt(dmg)} ダメージ！${multNote}`, "dmg crit");
+      else addLog(`${card.name} で ${fmt(dmg)} ダメージ！${multNote}`, "dmg");
       floatDamage(dmg, isCrit);
-      game.buffMultiplier = 1;
+      game.buffBonus = 0;
     } else if (card.type === "chain") {
       // trigger every hand card sharing the target tag (excluding other chain cards, to prevent chain-of-chain loops)
       const matches = game.hand.filter((c) => c.type !== "chain" && Array.isArray(c.tags) && c.tags.includes(card.targetTag));
@@ -978,6 +1106,7 @@
     save.points = panelBonus("startPoints");
     save.unlockedNodes = {};
     save.deckDefs = cloneDeckDefs(BASE_DECK_DEFS);
+    save.cardShopPurchases = {}; // the bought copies were just wiped from the deck, so their price climb goes too
     save.bestFloor = 0;
     persistSave();
     game = null;
@@ -1086,6 +1215,21 @@
     });
   }
 
+  // each purchase of the same item raises its next price, the same anti-snowball idea as the deck
+  // screen's rank-up/delete costs -- a flat price let one strong card be bought without limit.
+  const CARD_SHOP_PRICE_GROWTH = 1.5;
+  function cardShopPurchaseCount(item) {
+    const recorded = save.cardShopPurchases[item.id];
+    if (recorded != null) return recorded;
+    // saves from before this counter existed: every shop card came only from the shop, so the
+    // copies owned are the best available stand-in for how many were bought
+    const owned = save.deckDefs.find((d) => d.name === item.card.name && d.type === item.card.type);
+    return owned ? owned.count : 0;
+  }
+  function cardShopPrice(item) {
+    return Math.ceil(item.cost * Math.pow(CARD_SHOP_PRICE_GROWTH, cardShopPurchaseCount(item)));
+  }
+
   function renderCardShop() {
     el.cardShopPointsLabel.textContent = fmt(save.points);
     el.cardShopOptions.innerHTML = "";
@@ -1093,14 +1237,16 @@
     CARD_SHOP_POOL.slice(0, shopUnlockedCount()).forEach((item) => {
       const owned = save.deckDefs.find((d) => d.name === item.card.name && d.type === item.card.type);
       const countLabel = owned ? `（所持 ${owned.count}枚）` : "";
-      const affordable = save.points >= item.cost;
+      const price = cardShopPrice(item);
+      const affordable = save.points >= price;
       const div = document.createElement("div");
       div.className = "option-card" + (affordable ? "" : " disabled");
-      div.innerHTML = `<div class="oc-name">${item.name}${countLabel}</div><div class="oc-desc">${item.desc}</div><div class="oc-cost">${fmt(item.cost)}pt</div>`;
+      div.innerHTML = `<div class="oc-name">${item.name}${countLabel}</div><div class="oc-desc">${item.desc}</div><div class="oc-cost">${fmt(price)}pt</div>`;
       if (affordable) {
         div.addEventListener("click", () => {
-          if (save.points < item.cost) return;
-          save.points -= item.cost;
+          if (save.points < price) return;
+          save.points -= price;
+          save.cardShopPurchases[item.id] = cardShopPurchaseCount(item) + 1;
           addCardToDeckDefs(save.deckDefs, item.card);
           persistSave();
           renderCardShop();
@@ -1185,13 +1331,10 @@
     el.enemyBar.style.width = Math.max(0, (game.enemyHp / game.enemyHpMax) * 100) + "%";
     el.statN.textContent = game.n;
     el.statAtk.textContent = currentAtk();
-    if (game.buffMultiplier > 1) {
-      el.statBuff.textContent = "×" + game.buffMultiplier;
-      el.statBuff.classList.add("buff-active");
-    } else {
-      el.statBuff.textContent = "-";
-      el.statBuff.classList.remove("buff-active");
-    }
+    // the full multiplier the next attack/special will get, so base multiplier / exponent progress is
+    // visible even with no buff stored; highlighted only while a buff (or a gamble's miss) is pending
+    el.statBuff.textContent = "×" + fmtMult(damageMultiplier());
+    el.statBuff.classList.toggle("buff-active", game.buffBonus !== 0);
     el.deckCount.textContent = game.deck.length;
     el.deckPileCount.textContent = game.deck.length;
     el.handCount.textContent = game.hand.length + "枚";
@@ -1213,10 +1356,10 @@
       const cardClass = "card " + card.type + (card.playing ? " playing" : "");
       let typeLabel = TYPE_LABELS[card.type] || "バフ";
       let valueLabel;
-      if (card.type === "attack") valueLabel = fmt(attackBaseDamage(card)) + " dmg";
+      if (card.type === "attack") valueLabel = fmt(attackBaseDamage(card) * unbuffedDamageMultiplier()) + " dmg";
       else if (card.type === "draw") valueLabel = "+" + effectiveValue(card) + "枚";
       else if (card.type === "percent") valueLabel = Math.round(effectiveValue(card) * 100) + "%";
-      else if (card.type === "special") valueLabel = fmt(specialCardRaw(card)) + " dmg";
+      else if (card.type === "special") valueLabel = fmt(specialCardRaw(card) * unbuffedDamageMultiplier()) + " dmg";
       else if (card.type === "poison") valueLabel = "猛毒付与";
       else if (card.type === "chain") {
         const count = game.hand.filter((c) => c.uid !== card.uid && c.type !== "chain" && Array.isArray(c.tags) && c.tags.includes(card.targetTag)).length;
@@ -1331,8 +1474,8 @@
   }
 
   el.openFloorSelectBtn.addEventListener("click", () => { showScreen("floorSelect"); renderFloorSelect(); });
-  el.resetProgressBtn.addEventListener("click", () => {
-    if (!confirm("進行状況を全てリセットします。所持カード・強化・転生ポイントなど全てのセーブデータが消え、元に戻せません。よろしいですか?")) return;
+  el.resetProgressBtn.addEventListener("click", async () => {
+    if (!(await showConfirm("進行状況を全てリセットします。所持カード・強化・転生ポイントなど全てのセーブデータが消え、元に戻せません。よろしいですか?"))) return;
     localStorage.removeItem(STORAGE_KEY);
     location.reload();
   });
@@ -1349,7 +1492,7 @@
   // reincarnateNow() wipes real progress the instant it runs and persists it, so this gets the same
   // confirm the reset button has. The numbers are spelled out because the title screen only shows
   // the transcend points, not what is about to be given up.
-  el.openPanelBtn.addEventListener("click", () => {
+  el.openPanelBtn.addEventListener("click", async () => {
     const message =
       "転生します。\n\n" +
       "【失われるもの】\n" +
@@ -1361,7 +1504,7 @@
       `・転生ポイント（${fmt(save.transcendPoints)}）\n` +
       "・転生パネルの強化\n\n" +
       "元に戻せません。よろしいですか?";
-    if (!confirm(message)) return;
+    if (!(await showConfirm(message))) return;
     reincarnateNow();
   });
 
@@ -1761,6 +1904,7 @@
 
     NODES.forEach((node) => {
       const fromId = node.requires || "root";
+      if (fromId === node.id) return; // the root node itself has no incoming line to draw
       const from = TREE_POS[fromId];
       const to = TREE_POS[node.id];
       const line = document.createElementNS(svgNS, "line");
@@ -1772,14 +1916,6 @@
       svg.appendChild(line);
     });
     el.treeMap.appendChild(svg);
-
-    const rootPos = TREE_POS.root;
-    const rootDiv = document.createElement("div");
-    rootDiv.className = "tree-map-node root";
-    rootDiv.style.left = rootPos.x + "px";
-    rootDiv.style.top = rootPos.y + "px";
-    rootDiv.textContent = "起点";
-    el.treeMap.appendChild(rootDiv);
 
     NODES.forEach((node) => {
       const pos = TREE_POS[node.id];
@@ -1799,6 +1935,8 @@
           // later be ranked up / deleted from the title-screen deck upgrade screen too.
           if (node.kind === "startCards") {
             node.cards.forEach((c) => addCardToDeckDefs(save.deckDefs, c));
+          } else if (node.kind === "grantPoints") {
+            save.points += node.pointsGrant;
           }
           persistSave();
           renderTree();

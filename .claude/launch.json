@@ -2,10 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "static-server",
+      "name": "magia-tower-dev",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8746", "--directory", "C:/Users/aiki/Documents/magia-tower"],
-      "port": 8746
+      "runtimeArgs": ["-c", "import http.server as h,functools;C=type('C',(h.SimpleHTTPRequestHandler,),{'end_headers':lambda s:(s.send_header('Cache-Control','no-store'),h.SimpleHTTPRequestHandler.end_headers(s))[1]});h.ThreadingHTTPServer(('',8746),functools.partial(C,directory='.')).serve_forever()"],
+      "port": 8746,
+      "autoPort": false
     }
   ]
 }

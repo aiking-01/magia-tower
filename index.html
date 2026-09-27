@@ -55,7 +55,7 @@
           <div class="tree-points">所持ポイント <b id="cardShopPointsLabel">0</b></div>
         </div>
         <div class="tree-screen-title">カードショップ</div>
-        <div class="deck-zone-sub">レベルアップポイントで強力なカードを購入し、デッキに追加できる。何度でも購入できる。</div>
+        <div class="deck-zone-sub">レベルアップポイントで強力なカードを購入し、デッキに追加できる。同じカードは買うたびに価格が1.5倍になる（転生でリセット）。</div>
         <div class="option-grid" id="cardShopOptions"></div>
       </div>
     </div>
@@ -122,8 +122,8 @@
                 <div class="stat-value" id="statAtk">3</div>
               </div>
               <div class="stat-box">
-                <div class="stat-label">バフ</div>
-                <div class="stat-value" id="statBuff">-</div>
+                <div class="stat-label">倍率</div>
+                <div class="stat-value" id="statBuff">×1</div>
               </div>
             </div>
           </div>
@@ -207,6 +207,18 @@
           <div class="panel-map-scaler" id="panelMapScaler">
             <div class="tree-map-container panel-map-container" id="panelMap"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CONFIRM MODAL (replaces window.confirm, which some embedded/in-app
+         browser views auto-dismiss without ever showing anything to the player) ============ -->
+    <div class="modal-overlay" id="confirmOverlay">
+      <div class="modal-box">
+        <div class="modal-message" id="confirmMessage"></div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="confirmCancelBtn">キャンセル</button>
+          <button class="btn primary" id="confirmOkBtn">OK</button>
         </div>
       </div>
     </div>

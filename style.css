@@ -352,10 +352,6 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
   border-radius: 10px; padding: 6px 5px; font-size: 10px; cursor: default;
   border: 2px solid var(--locked); background: var(--panel-2);
 }
-.tree-map-node.root {
-  width: 70px; border-radius: 50%; height: 70px; display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 11px; border-color: var(--accent); color: var(--accent); background: var(--panel);
-}
 .tree-map-node .tn-name { font-weight: 800; margin-bottom: 2px; }
 .tree-map-node .tn-desc { color: var(--text-dim); font-size: 10px; margin-bottom: 4px; }
 .tree-map-node .tn-cost { font-size: 11px; font-weight: 700; }
@@ -417,42 +413,59 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
   }
 }
 
-/* width is set from JS to the enemy art's width and the text centred inside it, so a long
-   number grows symmetrically instead of running off the right edge of a narrow screen */
+/* left/top set from JS are a random point over the enemy art for this hit; translate(-50%,-50%)
+   centers the number on that point regardless of how wide the text turns out to be (a plain
+   "-18" vs. a full "CRITICAL-12,345"), so it never gets planted off-center at the edges. */
 .dmg-float {
   position: fixed; font-weight: 800; color: var(--attack); pointer-events: none;
-  font-size: 26px; animation: floatUp 2s ease-out forwards; z-index: 20;
-  text-shadow: 0 0 6px rgba(0,0,0,0.6); text-align: center; white-space: nowrap;
+  font-size: 26px; z-index: 20; transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 6px rgba(0,0,0,0.6)); text-align: center; white-space: nowrap;
+  /* bounce (see .dmg-char below) plays out first, then this holds it fully visible for a beat
+     before dropping fast to 0 right at the end -- duration matches DMG_LIFETIME_MS in game.js,
+     which removes the element from the DOM exactly as the fade finishes */
+  animation: dmgHoldFade 1.1s ease-in forwards;
 }
-.dmg-float.dmg-big { font-size: 42px; animation-name: floatUpBig; }
+.dmg-float.dmg-big { font-size: 42px; }
 .dmg-float.dmg-huge {
-  font-size: 68px; color: var(--gold); animation-name: floatUpHuge;
-  text-shadow: 0 0 16px var(--gold), 0 0 4px rgba(0,0,0,0.8);
+  font-size: 68px; color: var(--gold);
+  filter: drop-shadow(0 0 16px var(--gold)) drop-shadow(0 0 4px rgba(0,0,0,0.8));
 }
 .dmg-float.dmg-crit {
-  font-size: 50px; color: #ff4d4d; animation-name: floatUpCrit;
-  text-shadow: 0 0 16px #ff4d4d, 0 0 4px rgba(0,0,0,0.85);
-  -webkit-text-stroke: 1px #3a0000;
+  font-size: 50px; color: #ff4d4d;
+  filter: drop-shadow(0 0 16px #ff4d4d) drop-shadow(0 0 4px rgba(0,0,0,0.85));
 }
 .dmg-float.dmg-crit.dmg-huge { font-size: 76px; }
-@keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-40px); } }
-@keyframes floatUpBig {
-  0% { opacity: 1; transform: translateY(0) scale(0.8); }
-  15% { transform: translateY(-8px) scale(1.08); }
-  100% { opacity: 0; transform: translateY(-55px) scale(1); }
+
+/* damage numbers are rendered as glyph IMAGES (assets/dmg-font/*.png, pre-rendered from a
+   licensed font whose terms forbid shipping the font file itself where it could be extracted --
+   see assets/dmg-font/LICENSE-NOTE.txt), not text. Each .dmg-char is a currentColor-masked glyph
+   image, so it still inherits every color/glow rule above unchanged; only the stroke look that
+   used to come from -webkit-text-stroke is gone (the source font's own outline style covers that). */
+.dmg-char {
+  display: inline-block; height: 1em; vertical-align: baseline;
+  background-color: currentColor;
+  -webkit-mask-image: var(--dmg-glyph); mask-image: var(--dmg-glyph);
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  aspect-ratio: var(--dmg-aspect, 1);
+  /* each char bounces in on its own, staggered via an inline animation-delay set in
+     appendDmgChars(), so the string hops left-to-right like a little wave instead of
+     appearing all at once */
+  transform-origin: bottom center;
+  animation: dmgCharBounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-@keyframes floatUpHuge {
-  0% { opacity: 1; transform: translateY(0) scale(0.6); }
-  20% { transform: translateY(-14px) scale(1.25); }
-  100% { opacity: 0; transform: translateY(-75px) scale(1); }
+@keyframes dmgCharBounce {
+  0% { transform: translateY(10px) scale(0.6); }
+  55% { transform: translateY(-9px) scale(1.12); }
+  80% { transform: translateY(2px) scale(0.97); }
+  100% { transform: translateY(0) scale(1); }
 }
-@keyframes floatUpCrit {
-  0% { opacity: 1; transform: translateY(0) scale(0.5) rotate(0deg); }
-  12% { transform: translateY(-8px) scale(1.35) rotate(-8deg); }
-  24% { transform: translateY(-14px) scale(1.15) rotate(8deg); }
-  36% { transform: translateY(-18px) scale(1.2) rotate(-4deg); }
-  48% { transform: translateY(-24px) scale(1.15) rotate(0deg); }
-  100% { opacity: 0; transform: translateY(-85px) scale(1) rotate(0deg); }
+/* the last character's bounce (capped stagger + bounce duration) finishes around ~750ms into a
+   1100ms lifetime; staying fully opaque to 75% (825ms) leaves a short hold after that before
+   the quick fade over the remaining quarter of the timeline. */
+@keyframes dmgHoldFade {
+  0%, 75% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* ---- Impact juice: screen shake + flash for crit / huge hits ---- */
@@ -571,12 +584,17 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
   }
   .tree-legend { gap: 10px; font-size: 10px; flex-wrap: wrap; }
 
-  /* name on its own line, the -/+ and action buttons below it */
+  /* name / -+ / 強化・削除 each get their own full-width line. This used to let .dz-active and
+     .dz-actions share a line and only wrap if they didn't fit -- which meant a card's row was 2
+     lines normally but silently became a cramped 3rd line once its rank-up cost grew past a few
+     digits (repeated rank-ups double the cost every time, so this was reachable in a real save,
+     not just a theoretical edge case). Always stacking the three gives 強化/削除 the row's full
+     width every time, so a long cost number never has to fight the -+ controls for space. */
   .deck-zone-list { max-height: none; }
   .deck-zone-row { flex-wrap: wrap; gap: 8px; }
   .dz-info { flex: 1 1 100%; }
-  .dz-active { flex: 1 1 auto; }
-  .dz-actions { flex: 0 0 auto; margin-left: auto; }
+  .dz-active { flex: 1 1 100%; }
+  .dz-actions { flex: 1 1 100%; margin-left: 0; justify-content: flex-end; }
 
   .reward-title { font-size: 19px; }
   .reward-sub { font-size: 12px; margin-bottom: 14px; }
@@ -658,3 +676,18 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
     background-size: auto, 100% auto;
   }
 }
+
+/* ---- Confirm modal (in-page replacement for window.confirm(), see showConfirm() in game.js) ---- */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: rgba(5,7,20,0.72); align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.active { display: flex; animation: modalFadeIn 0.15s ease-out; }
+.modal-box {
+  background: var(--panel); border: 1px solid #2b3364; border-radius: 14px;
+  padding: 22px; max-width: 420px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.modal-message { white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin-bottom: 18px; }
+.modal-actions { display: flex; gap: 10px; }
+.modal-actions .btn { margin: 0; }
+@keyframes modalFadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
