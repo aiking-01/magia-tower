@@ -303,13 +303,15 @@
   const PANEL_CATEGORIES = [
     // perLevelGrowth: each successive tier's own contribution doubles (tier1 +1, tier2 +2, tier3 +4, ...)
     // instead of every tier adding the same flat amount
-    // 7 branches share the circle evenly (360/7 ≈ 51.43 degrees apart): the 5 below, plus the
+    // 8 branches share the circle evenly (360/8 = 45 degrees apart): the 6 below, plus the
     // shop chain and the specials chain defined further down
     { id: "panelAtk", label: "継承の力", desc: "基礎攻撃力", key: "atk", perLevel: 1, perLevelGrowth: 2, baseCost: 5, costMult: 1.4, maxLevel: 20, angle: 90 },
-    { id: "panelGold", label: "継承の福運", desc: "獲得金額 %", key: "goldPct", perLevel: 8, baseCost: 8, costMult: 1.4, maxLevel: 16, angle: 141.43 },
-    { id: "panelStartPoints", label: "継承の礎", desc: "転生後の開始pt", key: "startPoints", perLevel: 15, baseCost: 6, costMult: 1.4, maxLevel: 18, angle: 192.86 },
-    { id: "panelBuff", label: "継承の闘気", desc: "バフカードの倍率", key: "buffAdd", perLevel: 0.1, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 244.29 },
-    { id: "panelCritDmg", label: "継承の会心", desc: "クリティカルダメージ %", key: "critDmgAdd", perLevel: 5, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 295.71 },
+    { id: "panelGold", label: "継承の福運", desc: "獲得金額 %", key: "goldPct", perLevel: 8, baseCost: 8, costMult: 1.4, maxLevel: 16, angle: 135 },
+    { id: "panelStartPoints", label: "継承の礎", desc: "転生後の開始pt", key: "startPoints", perLevel: 15, baseCost: 6, costMult: 1.4, maxLevel: 18, angle: 180 },
+    { id: "panelBuff", label: "継承の闘気", desc: "バフカードの倍率", key: "buffAdd", perLevel: 0.1, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 225 },
+    { id: "panelCritDmg", label: "継承の会心", desc: "クリティカルダメージ %", key: "critDmgAdd", perLevel: 5, baseCost: 10, costMult: 1.4, maxLevel: 20, angle: 270 },
+    // エンドレス到達階から得る転生ポイントそのものを増やす、周回を重ねるほど効いてくる複利的な枝
+    { id: "panelTranscendGain", label: "継承の記憶", desc: "転生ポイント獲得 %", key: "transcendGainPct", perLevel: 8, baseCost: 10, costMult: 1.4, maxLevel: 16, angle: 315 },
   ];
   function panelLevel(cat) { return save.panelLevels[cat.id] || 0; }
   // the amount a SPECIFIC tier (1-indexed) of a category contributes; flat (perLevel) unless the
@@ -353,12 +355,12 @@
   // a chain like the categories above, but each tier unlocks one more CARD_SHOP_POOL slot instead
   // of a numeric bonus — "ショップ開放をツリーにして購入できるカードを増やす" — priced far below
   // the specials above so the first tier (which unlocks the shop itself) is an easy early grab
-  const PANEL_SHOP_CHAIN = { id: "panelShop", label: "商人との契約", baseCost: 300, costMult: 3, maxLevel: CARD_SHOP_POOL.length, angle: 347.14 };
+  const PANEL_SHOP_CHAIN = { id: "panelShop", label: "商人との契約", baseCost: 300, costMult: 3, maxLevel: CARD_SHOP_POOL.length, angle: 0 };
   function shopUnlockedCount() { return panelLevel(PANEL_SHOP_CHAIN); }
   function cardShopUnlocked() { return shopUnlockedCount() > 0; }
 
   // layout: every category (plus the shop chain) is a long spiraling chain radiating from the
-  // core at its own angle (7 directions total, ~51 degrees apart); the specials get their own
+  // core at its own angle (8 directions total, 45 degrees apart); the specials get their own
   // dedicated direction with a longer step so they read as a distinct, prominent mini-branch.
   const PANEL_CORE = { x: 0, y: 0 };
   const PANEL_POS = { core: PANEL_CORE };
@@ -372,12 +374,12 @@
   PANEL_SHOP_CHAIN.nodeIds = [];
   for (let i = 1; i <= PANEL_SHOP_CHAIN.maxLevel; i++) PANEL_SHOP_CHAIN.nodeIds.push(PANEL_SHOP_CHAIN.id + "_" + i);
   Object.assign(PANEL_POS, spiralChain(PANEL_SHOP_CHAIN.nodeIds, PANEL_CORE, PANEL_SHOP_CHAIN.angle, PANEL_CURL, PANEL_STEP, PANEL_STEP));
-  const PANEL_SPECIAL_ANGLE = 38.57;
+  const PANEL_SPECIAL_ANGLE = 45;
   const PANEL_SPECIAL_STEP = 220;
   Object.assign(PANEL_POS, spiralChain(PANEL_SPECIALS.map((s) => s.id), PANEL_CORE, PANEL_SPECIAL_ANGLE, 0, PANEL_SPECIAL_STEP, PANEL_SPECIAL_STEP));
 
-  // spider-web rings: every branch that shares the PANEL_STEP radius scale (the 5 categories plus
-  // the shop chain — 6 spokes, evenly spaced) gets connected to its angular neighbor at each tier
+  // spider-web rings: every branch that shares the PANEL_STEP radius scale (the 6 categories plus
+  // the shop chain — 7 spokes, evenly spaced) gets connected to its angular neighbor at each tier
   // it has a node for, forming concentric polygons around the core — straight spokes (above) plus
   // these rings is exactly a web's radial threads + circular threads. A strand lights up once both
   // ends are owned. Branches shorter than the ring's tier (the shop chain only goes to 4) simply
@@ -388,6 +390,7 @@
     PANEL_CATEGORIES.find((c) => c.id === "panelStartPoints"),
     PANEL_CATEGORIES.find((c) => c.id === "panelBuff"),
     PANEL_CATEGORIES.find((c) => c.id === "panelCritDmg"),
+    PANEL_CATEGORIES.find((c) => c.id === "panelTranscendGain"),
     PANEL_SHOP_CHAIN,
   ];
   function panelWebStrands() {
@@ -532,7 +535,13 @@
   function goldMultiplier() { return 1 + (treeBonus("goldPct") + panelBonus("goldPct") + (game.runGoldPctBonus || 0)) / 100; }
   function freeRerollAllowance() { return treeBonus("freeReroll"); }
   function shopOfferCount() { return 2 + treeBonus("shopSlots"); }
-  function upgradeCostMultiplier() { return save.unlockedNodes.goldS1 ? 1.5 : 2; }
+  // was checking unlockedNodes.goldS1 ("取引の極意"/free reroll) by mistake; the node that
+  // actually promises this ("経済の秘伝") carries kind: "cheapUpgrade", so look that up instead
+  // of hardcoding an id that has nothing to do with upgrade costs.
+  function upgradeCostMultiplier() {
+    const node = NODES.find((n) => n.kind === "cheapUpgrade");
+    return node && save.unlockedNodes[node.id] ? 1.5 : 2;
+  }
   const BASE_CRIT_MULT = 1.5;
   const TREE_CRIT_DAMAGE_CAP = 30; // the skill tree alone can never push critDamage past this
   // panel bonuses (継承の会心・会心の覚醒) are a permanent, post-transcend layer and are
@@ -990,10 +999,12 @@
   // cards via the skill tree) are permanent, meta-level actions handled outside a run.
   const SHOP_POOL = [
     { id: "atk3", name: "闘志の秘薬", desc: "基礎攻撃力 +3（このラン中）", baseCost: 20, apply: () => { game.runAtkBonus += 3; } },
-    { id: "hand1", name: "集中の秘薬", desc: "初期手札 +1（このラン中）", baseCost: 30, apply: () => { game.runHandBonus += 1; } },
+    // 初期手札+1は全フロアの手数効率に効き続ける強力な効果なので、序盤の周回では商人に並ばない
+    { id: "hand1", name: "集中の秘薬", desc: "初期手札 +1（このラン中）", baseCost: 30, unlockFloor: 11, apply: () => { game.runHandBonus += 1; } },
     { id: "critRate1", name: "会心の秘薬", desc: "クリティカル率 +10%（このラン中）", baseCost: 25, apply: () => { game.runCritRateBonus += 10; } },
     { id: "critDmg1", name: "会心撃の秘薬", desc: "クリティカルダメージ +15%（このラン中）", baseCost: 25, apply: () => { game.runCritDamageBonus += 15; } },
-    { id: "goldRun1", name: "強欲の秘薬", desc: "獲得金額 +50%（このラン中）", baseCost: 30, apply: () => { game.runGoldPctBonus += 50; } },
+    // 獲得金額+50%は同ラン内の商人購入を雪だるま式に増やせる経済系の強力な効果なので、より高い到達階を要求する
+    { id: "goldRun1", name: "強欲の秘薬", desc: "獲得金額 +50%（このラン中）", baseCost: 30, unlockFloor: 21, apply: () => { game.runGoldPctBonus += 50; } },
     //{ id: "runN1", name: "疾風の秘薬", desc: "初期手数 +2（このラン中）", baseCost: 35, apply: () => { game.runNBonus += 2; } },
   ];
 
