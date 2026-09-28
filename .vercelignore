@@ -1,0 +1,2 @@
+# dev-only files that must not be served from the public deployment
+.claude
