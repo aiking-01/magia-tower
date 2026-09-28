@@ -157,6 +157,11 @@
         <div class="reward-sub" id="floorClearSub">次の階層へ進む前に、商人から強化を購入できる</div>
         <div class="gold-earned">所持金: <b id="shopGold">0</b> G</div>
         <div class="option-grid" id="shopOptions"></div>
+        <div class="auto-buy-row" id="autoBuyRow" style="display:none;">
+          <button class="btn secondary" id="autoBuyBtn">自動購入</button>
+          <label class="auto-buy-toggle"><input type="checkbox" id="autoBuyToggle"> 毎回自動で実行</label>
+        </div>
+        <div class="auto-buy-summary" id="autoBuySummary"></div>
         <button class="btn secondary" id="rerollBtn">リロール</button>
         <button class="btn primary" id="toNextFloorBtn">次の階層へ</button>
         <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>

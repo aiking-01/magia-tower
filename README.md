@@ -102,6 +102,14 @@ DOM 参照テーブル（`el`）→ 各画面の render 関数 → イベント�
 
 レベルアップポイントが「クリア階数の合計」なのは、高いチェックポイントへの挑戦が正当に報われるようにするため。
 
+### 商人（フロアクリア画面）
+
+- 秘薬の価格は `基本価格 + 階数×2`。強欲の秘薬（獲得金額+10%）だけは同じランで買うたびに×1.2。
+- 会心の秘薬は+1%で、1ランに30回まで。集中の秘薬は11階、強欲の秘薬は21階を**クリア**すると並ぶ。
+- 有料リロールは `(10 + 階数×2) × 1.5^(この訪問での有料リロール回数)`。無料リロール（基本強化）は別枠。
+- **自動購入**（基本強化「自動購入開放」で解放）：「全部買う（安い順）→リロール」を所持金が尽きるまで素早く繰り返す。
+  リロールは、払った後に一番安い秘薬をまだ買える場合だけ行う。「毎回自動で実行」をONにすると商人画面に入るたびに実行（設定は保存）。次の階への移動は手動。
+
 ### 恒久強化の3画面
 
 - **基本強化** — ドラッグでパン / ホイール（スマホはピンチ）でズームするスキルツリー。攻撃力・手数・獲得金額などの枝に分かれる。
@@ -128,7 +136,7 @@ DOM 参照テーブル（`el`）→ 各画面の render 関数 → イベント�
 
 ```
 points  unlockedNodes  bestFloor  deckDefs  startCardsBackfilled
-transcendPoints  panelLevels  panelSpecials  transcendUnlocked  cardShopPurchases  bestClearedFloor
+transcendPoints  panelLevels  panelSpecials  transcendUnlocked  cardShopPurchases  bestClearedFloor  autoBuyEnabled
 ```
 
 - ロード時は `defaultSave()` にマージするので、**フィールドの追加は既存セーブを壊さない**。

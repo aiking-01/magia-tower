@@ -153,14 +153,15 @@
     { label: "富の神話", desc: "獲得金額 +15%", cost: 1200, effect: { goldPct: 15 } },
     { label: "黄金郷の記憶", desc: "獲得金額 +20%", cost: 2400, effect: { goldPct: 20 } },
   ]);
-  // fork 2: 経済の秘伝 lineage (shop utility; old trunk tier-3 node prepended)
+  // fork 2: shop utility. Costs belong to the position in the chain (15/130/280/600/1200), so the
+  // nodes pushed one step deeper by 自動購入開放 got pricier; the last one is set separately.
   const GOLD_SHOP = buildChain("goldS", "gold", 3, GOLD_FORK_ROOT, [
     { label: "取引の極意", desc: "初回リロール無料", cost: 15, effect: { freeReroll: 1 } },
-    { label: "経済の秘伝", desc: "強化コスト上昇が緩和(×2→×1.5)", cost: 130, kind: "cheapUpgrade" },
-    { label: "商人の信頼", desc: "商人の提案+1件", cost: 280, effect: { shopSlots: 1 } },
-    { label: "無限の交渉", desc: "無料リロール +1", cost: 600, effect: { freeReroll: 1 } },
-    { label: "豪商の風格", desc: "獲得金額 +10%", cost: 1200, effect: { goldPct: 10 } },
-    { label: "商会の盟主", desc: "商人の提案+1件", cost: 2400, effect: { shopSlots: 1 } },
+    { label: "自動購入開放", desc: "商人で自動購入（全部買う→リロール）が使える", cost: 130, kind: "autoBuy" },
+    { label: "経済の秘伝", desc: "強化コスト上昇が緩和(×2→×1.5)", cost: 280, kind: "cheapUpgrade" },
+    { label: "商人の信頼", desc: "商人の提案+1件", cost: 600, effect: { shopSlots: 1 } },
+    { label: "無限の交渉", desc: "無料リロール +1", cost: 1200, effect: { freeReroll: 1 } },
+    { label: "商会の盟主", desc: "商人の提案+1件", cost: 1500, effect: { shopSlots: 1 } },
   ]);
   // fork 3: 灼熱の血脈と対になる、開始資金を厚くする系統（旧幹5段目をそのまま先頭に配置）
   const GOLD_FORTUNE = buildChain("goldFo", "gold", 3, GOLD_FORK_ROOT, [
@@ -268,6 +269,7 @@
       transcendUnlocked: false, // becomes true forever the first time the final boss is defeated
       cardShopPurchases: {}, // card shop item id -> times bought since the last reincarnation (drives its rising price)
       bestClearedFloor: 0, // highest floor actually beaten (bestFloor also counts the floor you lost on); gates shop potions
+      autoBuyEnabled: false, // merchant auto-buy runs on its own every floor clear (once 自動購入開放 is bought)
     };
   }
   function loadSave() {
@@ -561,6 +563,7 @@
       gameOver: false,
       shopOffers: null,
       shopRerollsUsed: 0,
+      shopBuyCounts: {}, // shop potion id -> times bought this run (price growth / per-run caps)
     };
     startFloor(floor);
   }
@@ -716,6 +719,10 @@
     deckZoneList: document.getElementById("deckZoneList"),
     deckZoneTotal: document.getElementById("deckZoneTotal"),
     rerollBtn: document.getElementById("rerollBtn"),
+    autoBuyRow: document.getElementById("autoBuyRow"),
+    autoBuyBtn: document.getElementById("autoBuyBtn"),
+    autoBuyToggle: document.getElementById("autoBuyToggle"),
+    autoBuySummary: document.getElementById("autoBuySummary"),
     toNextFloorBtn: document.getElementById("toNextFloorBtn"),
     retreatBtn: document.getElementById("retreatBtn"),
 
@@ -1163,15 +1170,26 @@
     { id: "atk3", name: "闘志の秘薬", desc: "基礎攻撃力 +3（このラン中）", baseCost: 20, apply: () => { game.runAtkBonus += 3; } },
     // 初期手札+1は全フロアの手数効率に効き続ける強力な効果なので、序盤の周回では商人に並ばない
     { id: "hand1", name: "集中の秘薬", desc: "初期手札 +1（このラン中）", baseCost: 30, unlockFloor: 11, apply: () => { game.runHandBonus += 1; } },
-    { id: "critRate1", name: "会心の秘薬", desc: "クリティカル率 +10%（このラン中）", baseCost: 25, apply: () => { game.runCritRateBonus += 10; } },
+    // +1% with a per-run cap: at +10% a few purchases hit 100% crit and made the crit-rate tree pointless
+    { id: "critRate1", name: "会心の秘薬", desc: "クリティカル率 +1%（このラン中、最大30回）", baseCost: 25, maxPerRun: 30, apply: () => { game.runCritRateBonus += 1; } },
     { id: "critDmg1", name: "会心撃の秘薬", desc: "クリティカルダメージ +15%（このラン中）", baseCost: 25, apply: () => { game.runCritDamageBonus += 15; } },
-    // 獲得金額+50%は同ラン内の商人購入を雪だるま式に増やせる経済系の強力な効果なので、より高い到達階を要求する
-    { id: "goldRun1", name: "強欲の秘薬", desc: "獲得金額 +50%（このラン中）", baseCost: 30, unlockFloor: 21, apply: () => { game.runGoldPctBonus += 50; } },
+    // gold feeds every other purchase, so it snowballed (+26,850% in one tested run at +50% each): now
+    // +10% and each repeat buy in the same run costs ×1.2 more
+    { id: "goldRun1", name: "強欲の秘薬", desc: "獲得金額 +10%（このラン中、買うたび価格上昇）", baseCost: 30, unlockFloor: 21, priceGrowth: 1.2, apply: () => { game.runGoldPctBonus += 10; } },
     //{ id: "runN1", name: "疾風の秘薬", desc: "初期手数 +2（このラン中）", baseCost: 35, apply: () => { game.runNBonus += 2; } },
   ];
 
+  function shopBuyCount(opt) { return game.shopBuyCounts[opt.id] || 0; }
   function availableShopPool() {
-    return SHOP_POOL.filter((opt) => !opt.unlockFloor || save.bestClearedFloor >= opt.unlockFloor);
+    return SHOP_POOL.filter((opt) => (!opt.unlockFloor || save.bestClearedFloor >= opt.unlockFloor)
+      && (!opt.maxPerRun || shopBuyCount(opt) < opt.maxPerRun));
+  }
+  function shopOfferCost(opt) {
+    const base = opt.baseCost + game.floor * 2;
+    return opt.priceGrowth ? Math.ceil(base * Math.pow(opt.priceGrowth, shopBuyCount(opt))) : base;
+  }
+  function rollShopOffers() {
+    game.shopOffers = pickRandom(availableShopPool(), shopOfferCount()).map((opt) => ({ opt, cost: shopOfferCost(opt), bought: false }));
   }
 
   function pickRandom(arr, count) {
@@ -1187,10 +1205,12 @@
   function openFloorClear(goldGain, transcendGained) {
     const transcendNote = transcendGained ? `　転生ポイント+${fmt(transcendGained)}獲得（獲得済み、消えない）。` : "";
     el.floorClearSub.textContent = `所持金が増えた（+${fmt(goldGain)}G）。次の階層へ進む前に商人から購入できる。${transcendNote}`;
-    game.shopOffers = pickRandom(availableShopPool(), shopOfferCount()).map((opt) => ({ opt, cost: opt.baseCost + game.floor * 2, bought: false }));
+    rollShopOffers();
     game.shopRerollsUsed = 0;
+    el.autoBuySummary.textContent = "";
     renderShop();
     showScreen("floorClear");
+    if (autoBuyUnlocked() && save.autoBuyEnabled) setTimeout(runAutoBuy, AUTO_BUY_STEP_MS * 4);
   }
 
   // deck strengthening screen: title-screen-only, permanent, paid with level-up points (save.points)
@@ -1292,8 +1312,30 @@
   function rerollCost() {
     const freeLeft = freeRerollAllowance() - game.shopRerollsUsed;
     if (freeLeft > 0) return 0;
+    // ×1.5 per paid reroll within this visit: the old +5G steps were so cheap that rerolling
+    // hundreds of times per floor was the optimal play
     const paidRerolls = game.shopRerollsUsed - freeRerollAllowance();
-    return 10 + game.floor * 2 + paidRerolls * 5;
+    return Math.ceil((10 + game.floor * 2) * Math.pow(1.5, paidRerolls));
+  }
+
+  function buyOffer(offer) {
+    if (offer.bought || game.gold < offer.cost) return false;
+    game.gold -= offer.cost;
+    offer.opt.apply();
+    offer.bought = true;
+    game.shopBuyCounts[offer.opt.id] = shopBuyCount(offer.opt) + 1;
+    addLog(`購入：${offer.opt.name}`, "gold");
+    return true;
+  }
+
+  function doReroll() {
+    const cost = rerollCost();
+    if (game.gold < cost) return false;
+    game.gold -= cost;
+    game.shopRerollsUsed += 1;
+    rollShopOffers();
+    addLog(cost > 0 ? `商人のラインナップをリロール（-${fmt(cost)}G）` : `商人のラインナップをリロール（無料）`, "gold");
+    return true;
   }
 
   function renderShop() {
@@ -1302,15 +1344,12 @@
     game.shopOffers.forEach((offer) => {
       const div = document.createElement("div");
       const affordable = !offer.bought && game.gold >= offer.cost;
-      div.className = "option-card" + (offer.bought || !affordable ? " disabled" : "");
+      div.className = "option-card" + (offer.bought || !affordable || autoBuyRunning ? " disabled" : "");
       div.innerHTML = `<div class="oc-name">${offer.opt.name}</div><div class="oc-desc">${offer.opt.desc}</div><div class="oc-cost">${offer.bought ? "購入済み" : fmt(offer.cost) + " G"}</div>`;
       if (!offer.bought && affordable) {
         div.addEventListener("click", () => {
-          game.gold -= offer.cost;
-          offer.opt.apply();
-          offer.bought = true;
-          addLog(`購入：${offer.opt.name}`, "gold");
-          renderShop();
+          if (autoBuyRunning) return;
+          if (buyOffer(offer)) renderShop();
         });
       }
       el.shopOptions.appendChild(div);
@@ -1318,25 +1357,76 @@
 
     const cost = rerollCost();
     const free = cost === 0;
-    const canReroll = free || game.gold >= cost;
+    const canReroll = !autoBuyRunning && (free || game.gold >= cost);
     el.rerollBtn.textContent = free ? `リロール（無料）` : `リロール（${fmt(cost)}G）`;
     el.rerollBtn.disabled = !canReroll;
     el.rerollBtn.style.opacity = canReroll ? "1" : "0.5";
+
+    const unlocked = autoBuyUnlocked();
+    el.autoBuyRow.style.display = unlocked ? "" : "none";
+    el.autoBuyBtn.textContent = autoBuyRunning ? "自動購入を停止" : "自動購入";
+    el.autoBuyToggle.checked = !!save.autoBuyEnabled;
   }
 
   el.rerollBtn.addEventListener("click", () => {
-    const cost = rerollCost();
-    if (cost > 0) {
-      if (game.gold < cost) return;
-      game.gold -= cost;
-    }
-    game.shopRerollsUsed += 1;
-    game.shopOffers = pickRandom(availableShopPool(), shopOfferCount()).map((opt) => ({ opt, cost: opt.baseCost + game.floor * 2, bought: false }));
-    addLog(cost > 0 ? `商人のラインナップをリロール（-${fmt(cost)}G）` : `商人のラインナップをリロール（無料）`, "gold");
+    if (autoBuyRunning) return;
+    if (doReroll()) renderShop();
+  });
+
+  // ---------------- Auto-buy (unlocked by the 自動購入開放 tree node) ----------------
+  // repeats "buy everything affordable on offer (cheapest first) → reroll" at a quick but visible
+  // pace until the gold runs out. It only rerolls when the gold left after paying for the reroll
+  // could still buy the cheapest potion available, so it never burns the last gold on a reroll
+  // that can't lead to a purchase. Rising reroll (×1.5) and 強欲 (×1.2) prices end the loop.
+  const AUTO_BUY_STEP_MS = 50;
+  let autoBuyRunning = false;
+  let autoBuyStopRequested = false;
+  function autoBuyUnlocked() { return NODES.some((n) => n.kind === "autoBuy" && save.unlockedNodes[n.id]); }
+
+  async function runAutoBuy() {
+    if (autoBuyRunning || !game || !game.shopOffers || !autoBuyUnlocked()) return;
+    const thisGame = game;
+    const stillHere = () => game === thisGame && game.shopOffers && document.getElementById("screen-floorClear").classList.contains("active");
+    autoBuyRunning = true;
+    autoBuyStopRequested = false;
+    const goldBefore = game.gold;
+    const bought = {};
+    let rerolls = 0;
     renderShop();
+    while (!autoBuyStopRequested && stillHere()) {
+      const offer = game.shopOffers.filter((o) => !o.bought && game.gold >= o.cost).sort((a, b) => a.cost - b.cost)[0];
+      if (offer) {
+        buyOffer(offer);
+        bought[offer.opt.name] = (bought[offer.opt.name] || 0) + 1;
+      } else {
+        const pool = availableShopPool();
+        const cheapest = pool.length ? Math.min(...pool.map(shopOfferCost)) : Infinity;
+        const cost = rerollCost();
+        if (game.gold - cost < cheapest || !doReroll()) break;
+        rerolls += 1;
+      }
+      renderShop();
+      await new Promise((r) => setTimeout(r, AUTO_BUY_STEP_MS));
+    }
+    autoBuyRunning = false;
+    if (game !== thisGame || !game.shopOffers) return; // left the shop mid-way (next floor / retreat)
+    const items = Object.entries(bought).map(([name, n]) => `${name}×${n}`).join("、") || "なし";
+    el.autoBuySummary.textContent = `自動購入：${items}／リロール${rerolls}回／使用 ${fmt(goldBefore - game.gold)}G`;
+    renderShop();
+  }
+
+  el.autoBuyBtn.addEventListener("click", () => {
+    if (autoBuyRunning) autoBuyStopRequested = true;
+    else runAutoBuy();
+  });
+  el.autoBuyToggle.addEventListener("change", () => {
+    save.autoBuyEnabled = el.autoBuyToggle.checked;
+    persistSave();
+    if (save.autoBuyEnabled) runAutoBuy();
   });
 
   el.toNextFloorBtn.addEventListener("click", () => {
+    autoBuyStopRequested = true;
     game.shopOffers = null;
     startFloor(game.floor + 1);
   });
