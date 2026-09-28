@@ -15,6 +15,7 @@ cd magia-tower
 ```
 
 そのまま `index.html` をブラウザで開くだけで動く（`file://` でも可）。
+ただし `file://` ではダメージ数字の専用フォント画像が読み込めない（mask-image はCORS扱いのため）ので、通常のフォントで表示される。
 
 ローカルサーバーで動かす場合:
 
@@ -105,7 +106,7 @@ DOM 参照テーブル（`el`）→ 各画面の render 関数 → イベント�
 
 - **基本強化** — ドラッグでパン / ホイール（スマホはピンチ）でズームするスキルツリー。攻撃力・手数・獲得金額などの枝に分かれる。
 - **デッキ強化** — 所持カードの強化（ランク上げ / 基本15pt）・削除（基本20pt）・**編成枚数の増減**。
-  強化も削除もカードごとに使うたび費用が2倍になる（基本強化の `goldS1` を取っていれば1.5倍）。
+  強化も削除もカードごとに使うたび費用が2倍になる（基本強化の「経済の秘伝」を取っていれば1.5倍）。
   デッキは合計4枚未満にはできず、ダメージ源（攻撃/割合/特殊）も最後の1枚は削除できない。
 - **カードショップ** — 転生パネルの「商人との契約」を1段でも取ると解放される。強力なカードを購入できる。
   同じカードは買うたびに価格が1.5倍になる（`CARD_SHOP_PRICE_GROWTH`、購入回数は`cardShopPurchases`に保存し転生でリセット）。
@@ -127,13 +128,13 @@ DOM 参照テーブル（`el`）→ 各画面の render 関数 → イベント�
 
 ```
 points  unlockedNodes  bestFloor  deckDefs  startCardsBackfilled
-transcendPoints  panelLevels  panelSpecials  transcendUnlocked  cardShopPurchases
+transcendPoints  panelLevels  panelSpecials  transcendUnlocked  cardShopPurchases  bestClearedFloor
 ```
 
 - ロード時は `defaultSave()` にマージするので、**フィールドの追加は既存セーブを壊さない**。
   既存フィールドの意味を変える場合はマイグレーションが必要（`loadSave()` に前例あり）。
 - ゴールドはラン中の状態でありセーブされない。
-- 全消去はタイトル画面下部の「進行状況をリセット」から（`confirm()` で確認あり）。
+- 全消去はタイトル画面下部の「進行状況をリセット」から（確認ダイアログあり。`window.confirm` は一部のブラウザ埋め込み環境で表示されないため、自前の `showConfirm()` を使う）。
 
 ---
 

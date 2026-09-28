@@ -454,6 +454,11 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
   transform-origin: bottom center;
   animation: dmgCharBounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
+/* plain-text fallback for the glyph images (file:// can't load mask images), same bounce */
+.dmg-text {
+  display: inline-block; transform-origin: bottom center;
+  animation: dmgCharBounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
 @keyframes dmgCharBounce {
   0% { transform: translateY(10px) scale(0.6); }
   55% { transform: translateY(-9px) scale(1.12); }
@@ -686,6 +691,8 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 .modal-box {
   background: var(--panel); border: 1px solid #2b3364; border-radius: 14px;
   padding: 22px; max-width: 420px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  /* a phone held sideways is only ~320px tall: scroll inside the box instead of clipping OK off-screen */
+  max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto;
 }
 .modal-message { white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin-bottom: 18px; }
 .modal-actions { display: flex; gap: 10px; }

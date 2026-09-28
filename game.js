@@ -267,6 +267,7 @@
       panelSpecials: {}, // one-shot, very expensive panel purchases (also survives reincarnation)
       transcendUnlocked: false, // becomes true forever the first time the final boss is defeated
       cardShopPurchases: {}, // card shop item id -> times bought since the last reincarnation (drives its rising price)
+      bestClearedFloor: 0, // highest floor actually beaten (bestFloor also counts the floor you lost on); gates shop potions
     };
   }
   function loadSave() {
@@ -368,7 +369,7 @@
   // panel's 商人との契約 chain below has been bought, not by a single on/off unlock.
   const CARD_SHOP_POOL = [
     { id: "shopMeteor", name: "隕石落とし", cost: 500, desc: "強力な攻撃カード（威力80）を1枚デッキに追加", card: { type: "attack", name: "隕石落とし", value: 80 } },
-    { id: "shopBerserk", name: "狂乱の咆哮", cost: 800, desc: "次の攻撃カードのダメージが×3になるカードを1枚デッキに追加", card: { type: "buff", name: "狂乱の咆哮", value: 3 } },
+    { id: "shopBerserk", name: "狂乱の咆哮", cost: 800, desc: "次の攻撃カードの倍率に+2するバフ（単体なら×3）を1枚デッキに追加", card: { type: "buff", name: "狂乱の咆哮", value: 3 } },
     { id: "shopExecute", name: "処刑の火", cost: 2000, desc: "敵の最大HPの30%を攻撃するカードを1枚デッキに追加", card: { type: "percent", name: "処刑の火", value: 0.3 } },
     { id: "shopEnd", name: "終焉の使者", cost: 6000, desc: "基礎攻撃力の2乗ぶんダメージを与えるカードを1枚デッキに追加", card: { type: "special", name: "終焉の使者", calc: "atk2" } },
   ];
@@ -435,7 +436,10 @@
   function computeFloorHp(floor) {
     let hp = BASE_ENEMY_HP;
     for (let f = 1; f < floor; f++) {
-      const mult = (f % 10 === 0) ? 1.4 : 1.1;
+      // this step builds floor f+1's HP from floor f's, so the ×1.4 belongs to the step INTO each
+      // multiple of 10 (the mid-boss floors, as documented) -- testing on `f` put the spike on
+      // 11, 21, …, i.e. the first floor after every checkpoint instead of on the bosses
+      const mult = ((f + 1) % 10 === 0) ? 1.4 : 1.1;
       hp = Math.ceil(hp * mult - 1e-9); // guard against float error (e.g. 100*1.1 === 110.00000000000001)
     }
     return hp;
@@ -445,8 +449,12 @@
 
   function addCardToDeckDefs(defs, cardDef) {
     const existing = defs.find((d) => d.name === cardDef.name && d.type === cardDef.type);
-    if (existing) existing.count += 1;
-    else defs.push(Object.assign({}, cardDef, { count: 1 }));
+    if (existing) {
+      existing.count += 1;
+      // a newly gained copy joins the lineup; once -/+ has set an explicit `active`, raising only
+      // `count` would silently leave the new copy on the bench
+      if (existing.active != null) existing.active += 1;
+    } else defs.push(Object.assign({}, cardDef, { count: 1 }));
   }
 
   const RANK_UP_BASE_COST = 15;
@@ -467,6 +475,13 @@
     if (DAMAGE_CARD_TYPES.includes(def.type)) {
       const damageCards = save.deckDefs.filter((d) => DAMAGE_CARD_TYPES.includes(d.type)).reduce((sum, d) => sum + d.count, 0);
       if (damageCards <= 1) return false; // never delete the last way to deal damage
+    }
+    // when every owned copy is in the lineup, deleting one also removes it from the battle deck, so
+    // the lineup needs the same floors canDecreaseActive() enforces -- otherwise deletes could leave
+    // a lineup of 0 cards (hand and deck empty, no way out of the battle) or with nothing to deal damage
+    if (activeCount(def) >= def.count) {
+      if (totalActiveCards() <= MIN_DECK_SIZE) return false;
+      if (DAMAGE_CARD_TYPES.includes(def.type) && totalActiveDamageCards() <= 1) return false;
     }
     return true;
   }
@@ -572,6 +587,9 @@
   function damageMultiplier() {
     return Math.pow(Math.max(MIN_BUFF_MULTIPLIER, currentBaseMult() + game.buffBonus), currentExponent());
   }
+  // one rounding rule for both dealt damage and hand previews (they used ceil vs round and could
+  // differ by 1); the -1e-9 keeps float noise like 55.00000000000001 from ceiling up to 56
+  function roundDamage(x) { return Math.ceil(x - 1e-9); }
   // the part of damageMultiplier() that applies with no buff stored -- used for hand previews, which
   // (as before) show a card's own damage without whatever buff happens to be pending
   function unbuffedDamageMultiplier() { return Math.pow(currentBaseMult(), currentExponent()); }
@@ -611,7 +629,9 @@
   // rank raises a card's effective power without mutating its stored base value
   function effectiveValue(card) {
     const rank = card.rank || 0;
-    if (card.type === "attack" || card.type === "percent") return card.value * (1 + rank * 0.5);
+    // percent cards can't be ranked (a ranked 処刑の火 passed 100% and one-shot any floor); any rank an
+    // older save already put on one is ignored for the same reason
+    if (card.type === "attack") return card.value * (1 + rank * 0.5);
     if (card.type === "draw" || card.type === "buff") return card.value + rank;
     return card.value;
   }
@@ -729,25 +749,29 @@
   // in-page stand-in for window.confirm(): some embedded/in-app browser views auto-dismiss the
   // native dialog (it resolves to false immediately without ever being shown), which made the
   // 転生/reset buttons look completely unresponsive there. Resolves true/false like confirm() did.
+  // Only one can be open: a second request (keyboard re-activating the button that opened it, or
+  // tabbing to the other destructive button) is refused, since two stacked confirmations could
+  // both resolve true and run reset + reincarnate back to back. Clicking the backdrop does NOT
+  // cancel -- the second click of a double-click lands there and silently dismissed the dialog.
   function showConfirm(message) {
+    if (el.confirmOverlay.classList.contains("active")) return Promise.resolve(false);
     return new Promise((resolve) => {
       el.confirmMessage.textContent = message;
       el.confirmOverlay.classList.add("active");
+      // Enter/Space on whatever button launched this would otherwise stay on that background button
+      el.confirmCancelBtn.focus();
       function cleanup(result) {
         el.confirmOverlay.classList.remove("active");
         el.confirmOkBtn.removeEventListener("click", onOk);
         el.confirmCancelBtn.removeEventListener("click", onCancel);
-        el.confirmOverlay.removeEventListener("click", onOverlay);
         document.removeEventListener("keydown", onKey);
         resolve(result);
       }
       function onOk() { cleanup(true); }
       function onCancel() { cleanup(false); }
-      function onOverlay(e) { if (e.target === el.confirmOverlay) cleanup(false); }
       function onKey(e) { if (e.key === "Escape") cleanup(false); }
       el.confirmOkBtn.addEventListener("click", onOk);
       el.confirmCancelBtn.addEventListener("click", onCancel);
-      el.confirmOverlay.addEventListener("click", onOverlay);
       document.addEventListener("keydown", onKey);
     });
   }
@@ -805,20 +829,24 @@
   // group, which reads as the wave animation abruptly stopping partway through the string.
   const DMG_CHAR_STAGGER_SPAN_MS = 200;
   const DMG_LIFETIME_MS = 1100; // total on-screen time for a damage number; keep in sync with style.css's dmgHoldFade duration
+  // mask-image fetches its image in CORS mode, which a page opened via file:// is never allowed to
+  // do -- the glyphs come out fully transparent -- so file:// falls back to plain text
+  const DMG_GLYPHS_USABLE = location.protocol !== "file:";
   function appendDmgChars(container, text) {
     const chars = [...text];
     const gap = chars.length > 1 ? Math.min(DMG_CHAR_BOUNCE_STAGGER_MS, DMG_CHAR_STAGGER_SPAN_MS / (chars.length - 1)) : 0;
     chars.forEach((ch, i) => {
-      const file = DMG_GLYPH_FILES[ch];
+      const file = DMG_GLYPHS_USABLE ? DMG_GLYPH_FILES[ch] : null;
       const span = document.createElement("span");
       if (file) {
         span.className = "dmg-char";
         span.style.setProperty("--dmg-glyph", `url("assets/dmg-font/${file}.png")`);
         span.style.setProperty("--dmg-aspect", DMG_GLYPH_ASPECT[file]);
-        span.style.animationDelay = (i * gap) + "ms";
       } else {
-        span.textContent = ch; // fallback for any character outside the rasterized set above
+        span.className = "dmg-text"; // file:// or a character outside the rasterized set above
+        span.textContent = ch;
       }
+      span.style.animationDelay = (i * gap) + "ms";
       container.appendChild(span);
     });
   }
@@ -905,7 +933,7 @@
       const mult = damageMultiplier();
       const isCrit = card.forceCrit || rollCrit(card.critRateBonus);
       const critMult = isCrit ? critMultiplier(card.critDmgBonus) : 1;
-      const dmg = Math.ceil(attackBaseDamage(card) * mult * critMult);
+      const dmg = roundDamage(attackBaseDamage(card) * mult * critMult);
       game.enemyHp = Math.max(0, game.enemyHp - dmg);
       game.critStreak = isCrit ? game.critStreak + 1 : 0;
       const multNote = mult !== 1 ? `（倍率×${fmtMult(mult)}）` : "";
@@ -920,7 +948,7 @@
       const isCrit = rollCrit();
       const critMult = isCrit ? critMultiplier() : 1;
       const pct = effectiveValue(card);
-      const dmg = Math.ceil(game.enemyHpMax * pct * critMult);
+      const dmg = roundDamage(game.enemyHpMax * pct * critMult);
       game.enemyHp = Math.max(0, game.enemyHp - dmg);
       game.critStreak = isCrit ? game.critStreak + 1 : 0;
       const critNote = isCrit ? "会心の一撃！ " : "";
@@ -954,7 +982,7 @@
       const isCrit = rollCrit();
       const critMult = isCrit ? critMultiplier() : 1;
       const raw = specialCardRaw(card);
-      const dmg = Math.ceil(raw * mult * critMult);
+      const dmg = roundDamage(raw * mult * critMult);
       game.enemyHp = Math.max(0, game.enemyHp - dmg);
       game.critStreak = isCrit ? game.critStreak + 1 : 0;
       const multNote = mult !== 1 ? `（倍率×${fmtMult(mult)}）` : "";
@@ -1054,6 +1082,7 @@
     game.gameOver = true;
     addLog(`敵を撃破した！`, "info");
     game.floorPointsSum += game.floor;
+    save.bestClearedFloor = Math.max(save.bestClearedFloor, game.floor);
 
     let transcendGained = 0;
     if (game.floor > FINAL_FLOOR) {
@@ -1068,6 +1097,9 @@
       // first time reaching the final boss this run: offer the endless-mode choice.
       // reaching this at all permanently unlocks the reincarnation panel for future titles.
       const gained = awardRunEndPoints();
+      // already banked: without this, entering endless mode and later losing/retreating would
+      // pay floors 1-100 out a second time through the same running sum
+      game.floorPointsSum = 0;
       save.transcendUnlocked = true;
       persistSave();
       el.victoryPoints.textContent = fmt(gained);
@@ -1108,6 +1140,7 @@
     save.deckDefs = cloneDeckDefs(BASE_DECK_DEFS);
     save.cardShopPurchases = {}; // the bought copies were just wiped from the deck, so their price climb goes too
     save.bestFloor = 0;
+    save.bestClearedFloor = 0;
     persistSave();
     game = null;
     showScreen("panel");
@@ -1138,7 +1171,7 @@
   ];
 
   function availableShopPool() {
-    return SHOP_POOL.filter((opt) => !opt.unlockFloor || save.bestFloor >= opt.unlockFloor);
+    return SHOP_POOL.filter((opt) => !opt.unlockFloor || save.bestClearedFloor >= opt.unlockFloor);
   }
 
   function pickRandom(arr, count) {
@@ -1174,7 +1207,7 @@
       const canInc = canIncreaseActive(def);
       const row = document.createElement("div");
       row.className = "deck-zone-row";
-      const rankEligible = def.type !== "chain" && def.type !== "special" && def.type !== "poison" && !def.randomValues;
+      const rankEligible = def.type !== "chain" && def.type !== "special" && def.type !== "poison" && def.type !== "percent" && !def.randomValues;
       const rankLabel = def.rank ? ` / Lv.${def.rank}` : "";
       row.innerHTML = `
         <div class="dz-info">
@@ -1356,10 +1389,10 @@
       const cardClass = "card " + card.type + (card.playing ? " playing" : "");
       let typeLabel = TYPE_LABELS[card.type] || "バフ";
       let valueLabel;
-      if (card.type === "attack") valueLabel = fmt(attackBaseDamage(card) * unbuffedDamageMultiplier()) + " dmg";
+      if (card.type === "attack") valueLabel = fmt(roundDamage(attackBaseDamage(card) * unbuffedDamageMultiplier())) + " dmg";
       else if (card.type === "draw") valueLabel = "+" + effectiveValue(card) + "枚";
       else if (card.type === "percent") valueLabel = Math.round(effectiveValue(card) * 100) + "%";
-      else if (card.type === "special") valueLabel = fmt(specialCardRaw(card) * unbuffedDamageMultiplier()) + " dmg";
+      else if (card.type === "special") valueLabel = fmt(roundDamage(specialCardRaw(card) * unbuffedDamageMultiplier())) + " dmg";
       else if (card.type === "poison") valueLabel = "猛毒付与";
       else if (card.type === "chain") {
         const count = game.hand.filter((c) => c.uid !== card.uid && c.type !== "chain" && Array.isArray(c.tags) && c.tags.includes(card.targetTag)).length;
@@ -1571,14 +1604,17 @@
     // spider-web rings: curved (quadratic-bezier) arcs between branches at the same tier, bowed
     // outward through the point on their shared circle, so they read as actual curved web rings
     // rather than a straight polygon — drawn behind everything else
+    // measured relative to the core: fitCanvasToPositions() shifted every position (core included)
+    // off the origin, and bowing around (0,0) instead dented some rings inward and bulged others out
+    const core = PANEL_POS.core;
     panelWebStrands().forEach((strand) => {
-      const midX = (strand.a.x + strand.b.x) / 2;
-      const midY = (strand.a.y + strand.b.y) / 2;
+      const midX = (strand.a.x + strand.b.x) / 2 - core.x;
+      const midY = (strand.a.y + strand.b.y) / 2 - core.y;
       const midDist = Math.hypot(midX, midY) || 1;
-      const radius = Math.hypot(strand.a.x, strand.a.y); // both ends share this tier's radius from the core
+      const radius = Math.hypot(strand.a.x - core.x, strand.a.y - core.y); // both ends share this tier's radius from the core
       const bow = radius / midDist;
-      const cx = midX * bow;
-      const cy = midY * bow;
+      const cx = core.x + midX * bow;
+      const cy = core.y + midY * bow;
       const path = document.createElementNS(svgNS, "path");
       path.setAttribute("d", `M ${strand.a.x} ${strand.a.y} Q ${cx} ${cy} ${strand.b.x} ${strand.b.y}`);
       path.setAttribute("class", "web-strand" + (strand.active ? " active" : ""));
