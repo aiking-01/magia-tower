@@ -232,6 +232,8 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 
 /* ---- Card play effect: a quick pop + fade on the card itself when it's used ---- */
 .card.playing { animation: cardPlayFx 0.34s ease forwards; pointer-events: none; }
+/* 割合カードは1階1回まで: 使った後に手札に残っている分 */
+.card.spent { opacity: 0.4; filter: grayscale(0.7); cursor: not-allowed; }
 @keyframes cardPlayFx {
   0% { transform: translateY(0) scale(1); filter: brightness(1); }
   35% { transform: translateY(-10px) scale(1.08); filter: brightness(1.5); box-shadow: 0 0 16px rgba(255,255,255,0.55); }
@@ -681,6 +683,72 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
     background-size: auto, 100% auto;
   }
 }
+
+/* ---- Remnant follow-up hits: own color, quick flash on the enemy instead of screen shake ---- */
+.dmg-float.dmg-remnant {
+  font-size: 22px; color: #6fe3ff;
+  filter: drop-shadow(0 0 10px #6fe3ff) drop-shadow(0 0 3px rgba(0,0,0,0.8));
+}
+.enemy-visual.remnant-hit img { animation: remnantHitFlash 0.18s ease-out; }
+@keyframes remnantHitFlash {
+  0% { filter: brightness(2.2) saturate(0.4); transform: translateX(3px); }
+  100% { filter: none; transform: none; }
+}
+.log-line.remnant { color: #6fe3ff; }
+.log-line.levelup { color: var(--gold); font-weight: 800; }
+
+/* ---- Tabs (プレイヤー強化 / 残滓強化, shown once a remnant exists) ---- */
+.tab-bar { display: flex; gap: 6px; margin: 0 0 10px; }
+.tab-btn {
+  flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #3c4680; cursor: pointer;
+  background: var(--panel-2); color: var(--text-dim); font-weight: 800; font-size: 13px;
+}
+.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- Achievements ---- */
+.ach-list { display: flex; flex-direction: column; gap: 6px; }
+.ach-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+  background: var(--panel-2); opacity: 0.6;
+}
+.ach-row.done { opacity: 1; border-left: 3px solid var(--gold); }
+.ach-info { flex: 1; min-width: 0; }
+.ach-name { font-weight: 800; font-size: 13px; }
+.ach-desc { font-size: 11px; color: var(--text-dim); }
+.ach-reward { font-size: 11px; color: var(--gold); text-align: right; }
+.ach-state { font-size: 11px; color: var(--text-dim); min-width: 3em; text-align: right; }
+.ach-row.done .ach-state { color: var(--good); }
+
+/* ---- Remnants ---- */
+.remnant-list { display: flex; flex-direction: column; gap: 10px; }
+.remnant-box { border: 1px solid #3c4680; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.remnant-name { font-weight: 800; color: #6fe3ff; }
+.remnant-meta { font-size: 11px; color: var(--text-dim); }
+.rt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.rt-branch { display: flex; flex-direction: column; gap: 6px; }
+.rt-branch-title { font-weight: 800; font-size: 13px; text-align: center; color: #6fe3ff; }
+.rt-summary { font-size: 11px; text-align: center; color: var(--text-dim); }
+.rt-node {
+  border: 2px solid var(--locked); background: var(--panel-2); border-radius: 10px;
+  padding: 6px 5px; font-size: 10px; text-align: center;
+}
+.rt-node.locked { opacity: 0.5; }
+.rt-node.available { border-color: var(--gold); cursor: pointer; }
+.rt-node.available .tn-cost { color: var(--gold); }
+.rt-node.unaffordable .tn-cost { color: var(--text-dim); }
+.rt-node.unlocked { border-color: var(--good); background: linear-gradient(160deg, #1c3a28, #16291f); }
+.rt-node.unlocked .tn-cost { color: var(--good); }
+
+/* ---- Idle report / toasts ---- */
+.idle-report { font-size: 12px; color: #6fe3ff; margin-top: 10px; min-height: 1em; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
+.toast-area { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 6px; width: min(92vw, 460px); pointer-events: none; }
+.toast {
+  background: var(--panel); border: 1px solid var(--gold); color: var(--text); border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  animation: toastIn 0.25s ease-out, toastOut 0.4s ease-in 3.1s forwards;
+}
+@keyframes toastIn { 0% { opacity: 0; transform: translateY(-8px); } 100% { opacity: 1; transform: none; } }
+@keyframes toastOut { 100% { opacity: 0; transform: translateY(-8px); } }
 
 /* ---- Merchant auto-buy ---- */
 .auto-buy-row { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }

@@ -16,8 +16,9 @@
     <div class="screen" id="screen-home">
       <div class="panel home-hero">
         <div class="home-stats">
+          <span>Lv <b id="homeLevelLabel">1</b> <small id="homeExpLabel"></small></span>
           <span>最高到達階 <b id="bestFloorLabel">-</b></span>
-          <span>レベルアップポイント <b id="homePointsLabel">0</b></span>
+          <span>ソウル <b id="homePointsLabel">0</b></span>
           <span id="homeTranscendStat" style="display:none;">転生ポイント <b id="homeTranscendLabel">0</b></span>
         </div>
         <div class="home-banner-buttons">
@@ -25,8 +26,11 @@
           <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
           <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
           <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
+          <button class="btn secondary" id="openAchievementsBtn">実績</button>
+          <button class="btn secondary" id="openPanelPreviewBtn" style="display:none;">転生パネルを見る</button>
           <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
         </div>
+        <div class="idle-report" id="idleReport"></div>
         <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
         <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
       </div>
@@ -37,11 +41,12 @@
       <div class="panel">
         <div class="tree-header">
           <button class="btn ghost" id="deckUpgradeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-          <div class="tree-points">所持ポイント <b id="deckUpgradePointsLabel">0</b></div>
+          <div class="tree-points">所持ソウル <b id="deckUpgradePointsLabel">0</b></div>
         </div>
+        <div class="tab-bar" data-group="player"></div>
         <div class="tree-screen-title">デッキ強化</div>
         <div class="deck-zone-sub">
-          カードを選んで強化・削除できる。使うたびに次の費用が2倍になる（基本強化「経済の秘伝」で1.5倍）。ここでの変更は次回以降の全てのランに永続的に反映される。「−／＋」で、所持しているカードのうち実際にデッキへ編成する枚数を調整できる。</div>
+          カードを選んで強化・削除できる。使うたびに次の費用が2倍になる（基本強化「経済の秘伝」で1.5倍）。ここでの変更は次回以降の全てのランに永続的に反映される。「−／＋」で、所持しているカードのうち実際にデッキへ編成する枚数を調整できる（デッキは最低9枚）。</div>
         <div class="deck-zone-sub" id="deckZoneTotal" style="font-weight:800; color:var(--gold);"></div>
         <div class="deck-zone-list" id="deckZoneList"></div>
       </div>
@@ -52,10 +57,10 @@
       <div class="panel">
         <div class="tree-header">
           <button class="btn ghost" id="cardShopBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-          <div class="tree-points">所持ポイント <b id="cardShopPointsLabel">0</b></div>
+          <div class="tree-points">所持ソウル <b id="cardShopPointsLabel">0</b></div>
         </div>
         <div class="tree-screen-title">カードショップ</div>
-        <div class="deck-zone-sub">レベルアップポイントで強力なカードを購入し、デッキに追加できる。同じカードは買うたびに価格が1.5倍になる（転生でリセット）。</div>
+        <div class="deck-zone-sub">ソウルで強力なカードを購入し、デッキに追加できる。同じカードは買うたびに価格が1.5倍になる（転生でリセット）。</div>
         <div class="option-grid" id="cardShopOptions"></div>
       </div>
     </div>
@@ -77,8 +82,9 @@
       <div class="panel">
         <div class="tree-header">
           <button class="btn ghost" id="treeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
-          <div class="tree-points">所持ポイント <b id="treePointsLabel">0</b></div>
+          <div class="tree-points">所持ソウル <b id="treePointsLabel">0</b></div>
         </div>
+        <div class="tab-bar" data-group="player"></div>
         <div class="tree-screen-title">基本強化</div>
         <div class="tree-scroll-wrap" id="treeScrollWrap">
           <div class="tree-map-scaler" id="treeMapScaler">
@@ -90,6 +96,20 @@
           <span><i style="background:var(--gold)"></i>習得可能</span>
           <span><i style="background:var(--locked)"></i>未解放</span>
         </div>
+      </div>
+    </div>
+
+    <!-- ============ 拡張強化 (tab next to the basic tree; unlocked by 魂の拡張 on the reincarnation panel) ============ -->
+    <div class="screen" id="screen-treeExt">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="treeExtBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持ソウル <b id="treeExtPointsLabel">0</b></div>
+        </div>
+        <div class="tab-bar" data-group="player"></div>
+        <div class="tree-screen-title">拡張強化</div>
+        <div class="deck-zone-sub">何度でも強化できる。強化するたびに次の費用が上がる。基本強化と同じく、転生するとリセットされる。</div>
+        <div class="deck-zone-list" id="treeExtList"></div>
       </div>
     </div>
 
@@ -173,7 +193,7 @@
       <div class="panel narrow" style="text-align:center;">
         <div class="reward-title lose"><span id="defeatFloor">1</span>階で敗北…</div>
         <div class="reward-sub">力尽きたが、倒した敵たちから得た力は残る。</div>
-        <div class="gold-earned" style="font-size:18px;">レベルアップポイント +<b id="defeatPoints">0</b></div>
+        <div class="gold-earned" style="font-size:18px;">ソウル +<b id="defeatPoints">0</b></div>
         <button class="btn primary" id="defeatToHomeBtn">タイトルへ戻る</button>
       </div>
     </div>
@@ -183,7 +203,7 @@
       <div class="panel narrow" style="text-align:center;">
         <div class="reward-title win"><span id="retreatFloor">1</span>階まで進んで撤退した</div>
         <div class="reward-sub">無理をせず、ここまでの力を持ち帰った。</div>
-        <div class="gold-earned" style="font-size:18px;">レベルアップポイント +<b id="retreatPoints">0</b></div>
+        <div class="gold-earned" style="font-size:18px;">ソウル +<b id="retreatPoints">0</b></div>
         <button class="btn primary" id="retreatToHomeBtn">タイトルへ戻る</button>
       </div>
     </div>
@@ -193,7 +213,7 @@
       <div class="panel narrow" style="text-align:center;">
         <div class="reward-title win" style="font-size:28px;">ラスボス討伐！</div>
         <div class="reward-sub">塔の頂上に到達したが、扉の向こうにはまだ道が続いている。さらに深く進むか、ここで現世へ帰るか。</div>
-        <div class="gold-earned" style="font-size:20px;">レベルアップポイント +<b id="victoryPoints">0</b></div>
+        <div class="gold-earned" style="font-size:20px;">ソウル +<b id="victoryPoints">0</b></div>
         <button class="btn primary" id="enterEndlessBtn">エンドレスモードへ進む（101階〜）</button>
         <button class="btn secondary" id="victoryToHomeBtn">タイトルへ戻る</button>
       </div>
@@ -207,12 +227,55 @@
           <div class="tree-points">所持転生ポイント <b id="panelPointsLabel">0</b></div>
         </div>
         <div class="tree-screen-title">転生パネル</div>
-        <div class="deck-zone-sub">転生した！レベルアップポイント・基本強化・デッキは初期状態に戻った。ここでの強化は転生しても失われない。中心の「核」をクリックすると次の周回へ進む。</div>
+        <div class="deck-zone-sub" id="panelSub"></div>
         <div class="panel-map-wrap" id="panelScrollWrap">
           <div class="panel-map-scaler" id="panelMapScaler">
             <div class="tree-map-container panel-map-container" id="panelMap"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ============ ACHIEVEMENTS (title screen; permanent, never reset) ============ -->
+    <div class="screen" id="screen-achievements">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="achievementsBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">達成 <b id="achievementsCountLabel">0</b></div>
+        </div>
+        <div class="tree-screen-title">実績</div>
+        <div class="deck-zone-sub">実績の効果は足し合わされ、転生してもなくならない。</div>
+        <div class="deck-zone-sub" id="achievementsTotal" style="font-weight:800; color:var(--gold);"></div>
+        <div class="ach-list" id="achievementsList"></div>
+      </div>
+    </div>
+
+    <!-- ============ REMNANTS (replaces デッキ強化 on the title once a remnant is summoned) ============ -->
+    <div class="screen" id="screen-remnants">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="remnantsBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持転生ポイント <b id="remnantsPointsLabel">0</b></div>
+        </div>
+        <div class="tab-bar" data-group="remnant"></div>
+        <div class="tree-screen-title">残滓</div>
+        <div class="deck-zone-sub">残滓はあなたが攻撃するたびに、自分のデッキから1枚引き、あなたの与えたダメージの○%で追撃する（バフ・累乗・会心も含めた一撃が基準）。カードの強化には転生ポイントを使う。</div>
+        <div class="deck-zone-sub" id="remnantIdleInfo" style="font-weight:800; color:var(--gold);"></div>
+        <div class="remnant-list" id="remnantList"></div>
+      </div>
+    </div>
+
+    <!-- ============ REMNANT SKILL TREE (shared by all remnants; never reset) ============ -->
+    <div class="screen" id="screen-remnantTree">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="remnantTreeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持転生ポイント <b id="remnantTreePointsLabel">0</b></div>
+        </div>
+        <div class="tab-bar" data-group="remnant"></div>
+        <div class="tree-screen-title">残滓スキルツリー</div>
+        <div class="deck-zone-sub">全ての残滓に共通の強化。転生してもリセットされない。</div>
+        <div class="rt-grid" id="remnantTreeGrid"></div>
       </div>
     </div>
 
@@ -229,6 +292,11 @@
     </div>
   </div>
 
+  <!-- achievement / idle-income notices; outside .app so screen shake doesn't move them -->
+  <div class="toast-area" id="toastArea"></div>
+
+  <!-- break_infinity.js (MIT, vendor/break_infinity.LICENSE): big numbers past 1.8e308 -->
+  <script src="vendor/break_infinity.min.js"></script>
   <script src="game.js"></script>
 </body>
 
