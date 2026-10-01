@@ -882,7 +882,9 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 .log-line.hint { color: var(--gold); font-weight: 700; }
 .log-line.boss { color: var(--boss); font-weight: 700; }
 .key-hint { color: var(--text-dim); font-weight: 400; }
-.card { position: relative; }
+/* the key badge needs a positioned card; the face of a card that is still flipping in is already
+   absolute (.card-flip-face) and must stay that way, or its front stops overlaying its back */
+.card:not(.card-flip-face) { position: relative; }
 .card-key {
   position: absolute; top: 4px; left: 6px; font-size: 10px; font-weight: 800; color: var(--text-dim);
   border: 1px solid rgba(152,160,204,0.45); border-radius: 4px; padding: 0 4px; line-height: 14px;

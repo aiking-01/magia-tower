@@ -461,6 +461,9 @@
     game.n = BASE_N;
     game.buffBonus = 0;
     game.gameOver = false;
+    // 階の開始直後は少しだけ操作を受け付けない。「塔に挑む」などのダブルクリックの2回目が、
+    // 切り替わった戦闘画面のカードに当たって勝手に使われるのを防ぐ
+    game.inputReadyAt = performance.now() + INPUT_GUARD_MS;
     game.deck = buildShuffledDeck();
     game.hand = [];
     for (let i = 0; i < currentStartHand(); i++) drawOne();
@@ -540,6 +543,7 @@
   function closeSeal() { el.sealOverlay.classList.remove("active"); }
   el.sealCloseBtn.addEventListener("click", closeSeal);
   el.sealOverlay.addEventListener("click", (e) => { if (e.target === el.sealOverlay) closeSeal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && el.sealOverlay.classList.contains("active")) closeSeal(); });
   function modalOpen() { return el.sealOverlay.classList.contains("active") || el.confirmOverlay.classList.contains("active"); }
 
   const TOAST_MS = 3500;
@@ -702,8 +706,9 @@
   const CARD_FLIP_DELAY_MS = 180;
   const KILL_PAUSE_MS = 420; // とどめの一撃の数字と撃破演出を見せてから画面を切り替える
 
+  const INPUT_GUARD_MS = 300;
   function playCard(uid) {
-    if (!game || game.gameOver) return;
+    if (!game || game.gameOver || performance.now() < game.inputReadyAt) return;
     const card = game.hand.find((c) => c.uid === uid);
     if (!card || card.playing) return;
     const thisGame = game;
@@ -777,15 +782,26 @@
     el.runEndTitle.textContent = retreated ? `${game.floor}階まで進んで撤退した` : `${game.floor}階で敗北…`;
     el.runEndTitle.className = "reward-title " + (retreated ? "win" : "lose");
     const affordable = NODES.filter((n) => nodeState(n) === "available").length;
-    el.runEndSub.textContent = (retreated ? "無理をせず、ここまでの力を持ち帰った。" : "力尽きたが、倒した敵たちから得た力（ソウル）とレベルは残る。")
-      + (affordable ? `いま習得できる強化が${affordable}個ある！` : "");
+    retryFloor = retryStartFloor(game.startFloor, gained);
+    let sub = retreated ? "無理をせず、ここまでの力を持ち帰った。" : "力尽きたが、倒した敵たちから得た力（ソウル）とレベルは残る。";
+    if (!gained && game.startFloor > 1) sub = "1階もクリアできず、ソウルもレベルも得られなかった。ひとつ前のチェックポイントから登り直して力を蓄えよう。";
+    el.runEndSub.textContent = sub + (affordable ? `いま習得できる強化が${affordable}個ある！` : "");
     el.runEndPoints.textContent = fmt(gained);
     el.runEndTotal.textContent = fmt(save.points);
-    el.runEndRetryBtn.textContent = `すぐにもう一度挑む（${defaultStartFloor()}階から）`;
+    el.runEndRetryBtn.textContent = `すぐにもう一度挑む（${retryFloor}階から）`;
     showScreen("runEnd");
   }
+  // 「すぐにもう一度挑む」の開始階。ラスボス階からは勧めない（何も倒せないとソウルも経験値も入らず、
+  // 同じ所で負け続けて抜け出せなくなる）。開始階で即敗北したときは、ひとつ前のチェックポイントにする
+  let retryFloor = 1;
+  function retryStartFloor(lastStart, gained) {
+    const open = FLOOR_CHECKPOINTS.filter((cp) => cp !== FINAL_FLOOR && checkpointUnlocked(cp));
+    let i = open.length - 1;
+    if (!gained && open[i] >= lastStart && i > 0) i = Math.max(0, open.indexOf(Math.min(open[i], lastStart)) - 1);
+    return open[Math.max(0, i)];
+  }
   el.runEndTreeBtn.addEventListener("click", () => { game = null; openTree(); });
-  el.runEndRetryBtn.addEventListener("click", () => { game = null; newRun(defaultStartFloor()); });
+  el.runEndRetryBtn.addEventListener("click", () => { game = null; newRun(retryFloor); });
   el.runEndHomeBtn.addEventListener("click", () => { game = null; goHome(); });
 
   // ---------------- 商人（フロアクリア） ----------------
@@ -1182,10 +1198,6 @@
     renderTimer();
   }
 
-  function defaultStartFloor() {
-    const open = FLOOR_CHECKPOINTS.filter(checkpointUnlocked);
-    return open[open.length - 1];
-  }
   el.openFloorSelectBtn.addEventListener("click", openTowerEntry);
   el.treeGoBtn.addEventListener("click", openTowerEntry);
   // チェックポイントが1階しかないうちは、選ぶ画面を挟まずにすぐ戦闘へ
