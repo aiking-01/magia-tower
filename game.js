@@ -326,7 +326,11 @@
       return Number.isFinite(d.mantissa) && Number.isFinite(d.exponent) ? d : new Decimal(0);
     } catch (e) { return new Decimal(0); }
   }
+  // set while a reset is wiping the save: the reload fires pagehide, and persistSave() would write the
+  // in-memory save straight back, so the reset would silently do nothing
+  let wipingSave = false;
   function persistSave() {
+    if (wipingSave) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(save)); } catch (e) { /* ignore */ }
   }
 
@@ -2218,6 +2222,7 @@
   el.openFloorSelectBtn.addEventListener("click", () => { showScreen("floorSelect"); renderFloorSelect(); });
   el.resetProgressBtn.addEventListener("click", async () => {
     if (!(await showConfirm("進行状況を全てリセットします。所持カード・強化・転生ポイントなど全てのセーブデータが消え、元に戻せません。よろしいですか?"))) return;
+    wipingSave = true;
     localStorage.removeItem(STORAGE_KEY);
     location.reload();
   });
