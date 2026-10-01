@@ -247,18 +247,30 @@
   // shared by the basic tree and the reincarnation panel: tightly re-fits a canvas (shifting
   // every position, including the origin, in place) around whatever a node layout actually
   // spans, so panning never drags through a huge stretch of empty space past the outermost nodes.
-  function fitCanvasToPositions(posMap, edgePad) {
-    const xs = Object.values(posMap).map((p) => p.x);
-    const ys = Object.values(posMap).map((p) => p.y);
+  // With `center` (a point in posMap), the canvas is laid out symmetrically around it, so that node
+  // (the tree's 起点, the panel's 核) is the exact middle of the map: centred at every zoom level,
+  // and still in the middle when the whole map fits on screen.
+  function fitCanvasToPositions(posMap, edgePad, center) {
+    const pts = Object.values(posMap);
+    if (center) {
+      const cx = center.x;
+      const cy = center.y;
+      const halfW = Math.max(...pts.map((p) => Math.abs(p.x - cx))) + edgePad;
+      const halfH = Math.max(...pts.map((p) => Math.abs(p.y - cy))) + edgePad;
+      pts.forEach((p) => { p.x = p.x - cx + halfW; p.y = p.y - cy + halfH; });
+      return { width: halfW * 2, height: halfH * 2 };
+    }
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
     const minX = Math.min(...xs) - edgePad;
     const maxX = Math.max(...xs) + edgePad;
     const minY = Math.min(...ys) - edgePad;
     const maxY = Math.max(...ys) + edgePad;
-    Object.values(posMap).forEach((p) => { p.x -= minX; p.y -= minY; });
+    pts.forEach((p) => { p.x -= minX; p.y -= minY; });
     return { width: maxX - minX, height: maxY - minY };
   }
   const TREE_EDGE_PAD = 90; // half a node's footprint (card is 84px wide, plus its text/border) so nothing clips
-  const { width: TREE_CANVAS_WIDTH, height: TREE_CANVAS_HEIGHT } = fitCanvasToPositions(TREE_POS, TREE_EDGE_PAD);
+  const { width: TREE_CANVAS_WIDTH, height: TREE_CANVAS_HEIGHT } = fitCanvasToPositions(TREE_POS, TREE_EDGE_PAD, TREE_POS.root);
 
   function defaultSave() {
     return {
@@ -338,7 +350,17 @@
   // set while a reset is wiping the save: the reload fires pagehide, and persistSave() would write the
   // in-memory save straight back, so the reset would silently do nothing
   let wipingSave = false;
+  // ?debug=1: souls, transcend points and run gold are topped back up whenever the game saves, so every
+  // purchase can be tried freely
+  const DEBUG_FUNDS = 1e15;
+  function debugTopUp() {
+    if (!DEBUG_MODE) return;
+    if (!(save.points >= DEBUG_FUNDS)) save.points = DEBUG_FUNDS;
+    if (!(save.transcendPoints >= DEBUG_FUNDS)) save.transcendPoints = DEBUG_FUNDS;
+    if (game && !(game.gold >= DEBUG_FUNDS)) game.gold = DEBUG_FUNDS;
+  }
   function persistSave() {
+    debugTopUp();
     if (wipingSave) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(save)); } catch (e) { /* ignore */ }
   }
@@ -635,7 +657,7 @@
   Object.assign(PANEL_POS, foldedArm(PANEL_SPECIALS.map((sp) => sp.id), panelSpokeAngle(7)));
 
   const PANEL_EDGE_PAD = 90;
-  const { width: PANEL_CANVAS_WIDTH, height: PANEL_CANVAS_HEIGHT } = fitCanvasToPositions(PANEL_POS, PANEL_EDGE_PAD);
+  const { width: PANEL_CANVAS_WIDTH, height: PANEL_CANVAS_HEIGHT } = fitCanvasToPositions(PANEL_POS, PANEL_EDGE_PAD, PANEL_POS.core);
 
   // HP, damage, multipliers and exp are break_infinity Decimals (window.Decimal, vendor/), so they go on
   // past 1.8e308 instead of overflowing to Infinity. Below this, plain doubles are exact enough that the
@@ -1040,6 +1062,8 @@
     { id: "lastMove", name: "背水の陣", desc: "最後の1手で敵を倒す", hidden: true, test: () => stat("lastMoveWins") >= 1, bonus: { critDmg: 30 } },
     { id: "bossOneShot", name: "一刀両断", desc: "ラスボスを1手で倒す", hidden: true, test: () => stat("bossOneShot") >= 1, bonus: { atkPct: 50 } },
     { id: "idle8h", name: "眠れる塔", desc: "8時間分の放置収入を一度に受け取る", hidden: true, test: () => stat("maxIdleMinutes") >= 480, bonus: { soulPct: 20 } },
+    { id: "staffGlow", name: "杖の目覚め", desc: "タイトルの杖に触れて光らせる", hidden: true, test: () => stat("staffTouches") >= 1, bonus: { atkPct: 10 } },
+    { id: "staffGlow50", name: "魔力の共鳴", desc: "タイトルの杖を50回光らせる", hidden: true, test: () => stat("staffTouches") >= 50, bonus: { soulPct: 15 } },
     // hidden: the only tampering a browser game can actually observe is the clock jumping backwards
     { id: "timeTraveler", name: "時を遡る者", desc: "端末の時計を過去に戻す", hidden: true, test: () => stat("clockRollback") >= 1, bonus: { soulPct: 10 } },
   ]);
@@ -1225,6 +1249,7 @@
 
   function startFloor(floor) {
     game.floor = floor;
+    debugTopUp();
     game.enemyHpMax = enemyHpForFloor(floor);
     game.enemyHp = game.enemyHpMax;
     game.n = currentStartN();
@@ -1964,6 +1989,7 @@
   }
 
   function openFloorClear(goldGain, levelBefore, levelsGained) {
+    debugTopUp();
     const next = game.floor + 1;
     const nextTag = next === FINAL_FLOOR ? "【ラスボス】" : next % 10 === 0 ? "【中ボス】" : "";
     el.floorClearSub.textContent = `${game.floor}階クリア（+${fmt(goldGain)}G）。次は${next}階${nextTag}：HP ${jpUnitText(enemyHpForFloor(next))}　Lv.${save.level}（次まで ${expRemainingText()}）`;
@@ -2093,6 +2119,7 @@
   }
 
   function buyOffer(offer) {
+    debugTopUp();
     if (offer.bought || game.gold < offer.cost) return false;
     game.gold -= offer.cost;
     offer.opt.apply();
@@ -2103,6 +2130,7 @@
   }
 
   function doReroll() {
+    debugTopUp();
     const cost = rerollCost();
     if (game.gold < cost) return false;
     game.gold -= cost;
@@ -2696,6 +2724,12 @@
 
   // during a 苦難 the panel-given features show as sealed plates (like the festival build's teasers)
   const SEAL_TEXT = "苦難の間は封印されている。苦難を放棄するか、ラスボスを倒すと封印が解ける。";
+  const SEAL_DESC = {
+    転生パネル: "転生ポイントで永続強化を買うパネル。苦難の間は、買ってある強化の効果もすべて止まる。",
+    残滓: "あなたの攻撃に続いて追撃し、留守の間も稼いでくれる残滓。苦難の間は戦わず、放置収入も止まる。",
+    カードショップ: "ソウルで強力なカードを買えるショップ。苦難の間は店を開けられない。",
+    拡張強化: "ソウルで何度でも強化できる拡張強化。苦難の間はタブごと封じられる。",
+  };
   function renderHomeSeals() {
     const sealed = [];
     if (trialSealed()) {
@@ -2712,6 +2746,7 @@
       b.innerHTML = `<span class="seal-stamp small">封</span><span class="sealed-name"></span>`;
       b.querySelector(".sealed-name").textContent = name;
       b.addEventListener("click", () => showToast(`「${name}」は${SEAL_TEXT}`));
+      attachMenuDesc(b, () => `封印：${name}`, () => `${SEAL_DESC[name]}\n${SEAL_TEXT}`);
       el.homeSealedGrid.appendChild(b);
     });
   }
@@ -3083,7 +3118,7 @@
   const narrowScreen = window.matchMedia("(max-width: 640px)");
 
   // ---------------- Zooming the skill tree (wheel on desktop, pinch on touch) ----------------
-  const TREE_ZOOM_MIN = 0.35;
+  const TREE_ZOOM_MIN = 0.22; // far enough out that the whole tree fits, centred on 起点
   const TREE_ZOOM_MAX = 2;
   const TREE_OPEN_ZOOM = 1.6; // opening the screen starts zoomed in on the origin, not showing a corner of the map
   const TREE_OPEN_ZOOM_NARROW = 0.8; // phone width: 1.6 leaves barely two nodes on screen
@@ -3358,7 +3393,22 @@
     s.style.setProperty("--d", (-rand(0, t)).toFixed(2) + "s");
     staffSparks.appendChild(s);
   }
+  let chargeTimer = null;
   staffEl.addEventListener("click", () => {
+    // the circles, the stars, the far tower and the runes all flare up with the staff for a moment
+    const stage = staffEl.closest(".home-stage");
+    stage.classList.add("charged");
+    clearTimeout(chargeTimer);
+    chargeTimer = setTimeout(() => stage.classList.remove("charged"), 1600);
+    const floatEl = staffEl.querySelector(".staff-float");
+    for (let i = 0; i < 2; i++) {
+      const surge = document.createElement("div");
+      surge.className = "mc-ripple surge";
+      surge.style.animationDelay = (i * 0.2) + "s";
+      floatEl.appendChild(surge);
+      setTimeout(() => surge.remove(), 1400);
+    }
+    if (typeof onStaffTouched === "function") onStaffTouched();
     staffEl.classList.remove("flash");
     void staffEl.offsetWidth;
     staffEl.classList.add("flash");
@@ -3374,6 +3424,12 @@
       setTimeout(() => s.remove(), 950);
     }
   });
+
+  function onStaffTouched() {
+    bumpStat("staffTouches");
+    checkAchievements();
+    persistSave();
+  }
 
   // ---------------- Title: what each menu button does ----------------
   // landscape with a mouse: hovering a button stretches the menu box to the right and writes the
@@ -3394,13 +3450,15 @@
   const menuBox = el.openFloorSelectBtn.parentElement;
   const hoverMenuMQ = window.matchMedia("(hover: hover) and (pointer: fine) and (orientation: landscape) and (min-width: 861px)");
   function menuLabel(btn) { return [...btn.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim(); }
-  Object.keys(MENU_DESC).forEach((id) => {
-    const btn = el[id];
+  // hover (landscape + mouse) writes the description into the box's stretched-out right side; on touch a
+  // long press shows it as a bubble and swallows the click that would otherwise follow
+  function attachMenuDesc(btn, titleFn, textFn) {
     btn.addEventListener("mouseenter", () => {
       if (!hoverMenuMQ.matches) return;
-      el.menuDescTitle.textContent = menuLabel(btn);
-      el.menuDescText.textContent = MENU_DESC[id]();
+      el.menuDescTitle.textContent = titleFn();
+      el.menuDescText.textContent = textFn();
       menuBox.classList.add("show-desc");
+      menuBox.parentElement.classList.add("desc-open");
     });
     let pressTimer = null;
     let longPressed = false;
@@ -3408,27 +3466,30 @@
       if (e.pointerType !== "touch") return;
       longPressed = false;
       clearTimeout(pressTimer);
-      pressTimer = setTimeout(() => { longPressed = true; showMenuTip(btn, MENU_DESC[id]()); }, 450);
+      pressTimer = setTimeout(() => { longPressed = true; showMenuTip(titleFn(), textFn(), btn); }, 450);
     });
     ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => btn.addEventListener(ev, () => clearTimeout(pressTimer)));
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
-    // a long press only explains; it must not also fire the button
     btn.addEventListener("click", (e) => {
       if (!longPressed) return;
       longPressed = false;
       e.preventDefault();
       e.stopImmediatePropagation();
     }, true);
+  }
+  Object.keys(MENU_DESC).forEach((id) => attachMenuDesc(el[id], () => menuLabel(el[id]), MENU_DESC[id]));
+  menuBox.addEventListener("mouseleave", () => {
+    menuBox.classList.remove("show-desc");
+    menuBox.parentElement.classList.remove("desc-open");
   });
-  menuBox.addEventListener("mouseleave", () => menuBox.classList.remove("show-desc"));
   let menuTipTimer = null;
-  function showMenuTip(btn, text) {
+  function showMenuTip(titleText, text, btn) {
     document.querySelectorAll(".menu-tip").forEach((t) => t.remove());
     const tip = document.createElement("div");
     tip.className = "menu-tip";
     const title = document.createElement("div");
     title.className = "menu-tip-title";
-    title.textContent = menuLabel(btn);
+    title.textContent = titleText;
     const body = document.createElement("div");
     body.textContent = text;
     tip.appendChild(title);
@@ -3615,6 +3676,7 @@
 
   // ---------------- Init ----------------
   showScreen("home");
+  debugTopUp();
   showIdleReport(settleIdle(true)); // time spent closed (capped) is paid out by the remnants on load
   renderHome();
   if (save.trialPending) {

@@ -1191,7 +1191,22 @@
     s.style.setProperty("--d", (-rand(0, t)).toFixed(2) + "s");
     staffSparks.appendChild(s);
   }
+  let chargeTimer = null;
   staffEl.addEventListener("click", () => {
+    // the circles, the stars, the far tower and the runes all flare up with the staff for a moment
+    const stage = staffEl.closest(".home-stage");
+    stage.classList.add("charged");
+    clearTimeout(chargeTimer);
+    chargeTimer = setTimeout(() => stage.classList.remove("charged"), 1600);
+    const floatEl = staffEl.querySelector(".staff-float");
+    for (let i = 0; i < 2; i++) {
+      const surge = document.createElement("div");
+      surge.className = "mc-ripple surge";
+      surge.style.animationDelay = (i * 0.2) + "s";
+      floatEl.appendChild(surge);
+      setTimeout(() => surge.remove(), 1400);
+    }
+    if (typeof onStaffTouched === "function") onStaffTouched();
     staffEl.classList.remove("flash");
     void staffEl.offsetWidth;
     staffEl.classList.add("flash");

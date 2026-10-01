@@ -1435,3 +1435,91 @@ body.title-bg h1 { display: none; } /* the logo is the title here */
   animation: toastIn 0.15s ease-out;
 }
 .menu-tip-title { font-weight: 900; color: var(--gold); margin-bottom: 4px; }
+
+/* =====================================================================
+   タイトル背景の装飾：揺らめくオーロラ・瞬く星座・遠くで回る魔法陣・遠景の塔・立ちのぼるルーン
+   杖に触れると（.charged）魔法陣も背景も一斉に光って応える
+   ===================================================================== */
+.home-stage { isolation: isolate; }
+.home-main { position: relative; z-index: 1; }
+.home-staff { z-index: 1; }
+.title-deco { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.deco-aurora {
+  position: absolute; left: -10%; right: -10%; top: -8%; height: 55%; opacity: 0.55; filter: blur(30px);
+  background:
+    radial-gradient(ellipse 40% 60% at 30% 50%, rgba(90, 230, 210, 0.22), transparent 70%),
+    radial-gradient(ellipse 45% 55% at 62% 40%, rgba(150, 110, 255, 0.24), transparent 70%),
+    radial-gradient(ellipse 35% 50% at 85% 60%, rgba(255, 150, 210, 0.14), transparent 70%);
+  animation: auroraDrift 18s ease-in-out infinite alternate;
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+@keyframes auroraDrift { from { transform: translateX(-3%) skewX(-4deg); } to { transform: translateX(3%) skewX(4deg); } }
+.deco-constellation { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.5; transition: opacity 0.4s ease; }
+.deco-constellation line { stroke: rgba(170, 200, 255, 0.35); stroke-width: 0.8; stroke-dasharray: 2 4; }
+.deco-constellation circle { fill: #e6efff; filter: drop-shadow(0 0 4px #a8c8ff); animation: starPulse var(--tw) ease-in-out var(--td) infinite alternate; }
+@keyframes starPulse { from { opacity: 0.35; } to { opacity: 1; } }
+.deco-circle { position: absolute; aspect-ratio: 1; overflow: visible; opacity: 0.16; transition: opacity 0.4s ease, filter 0.4s ease; }
+.deco-circle circle, .deco-circle polygon { fill: none; stroke: #9fc4ff; stroke-width: 0.9; }
+.deco-circle .thin { stroke-width: 0.5; }
+.deco-circle .dash { stroke-dasharray: 3 5; stroke: #ffe3a0; }
+.deco-c1 { left: -12vh; bottom: -16vh; height: 62vh; animation: decoSpin 120s linear infinite; }
+.deco-c2 { left: 44%; top: -10vh; height: 30vh; animation: decoSpin 80s linear infinite reverse; opacity: 0.12; }
+@keyframes decoSpin { to { transform: rotate(360deg); } }
+.deco-tower { position: absolute; left: 40%; bottom: 0; height: 58vh; opacity: 0.5; transition: filter 0.4s ease; }
+.deco-tower path { fill: rgba(8, 10, 32, 0.85); stroke: rgba(130, 160, 255, 0.35); stroke-width: 0.8; }
+.deco-tower .win { fill: #ffd98a; opacity: 0.35; animation: winFlicker 4s ease-in-out var(--wd) infinite alternate; }
+@keyframes winFlicker { from { opacity: 0.15; } to { opacity: 0.6; } }
+.deco-tower .beacon { fill: #bfe6ff; filter: drop-shadow(0 0 6px #8fd3ff) drop-shadow(0 0 14px #8fd3ff); }
+.deco-runes span {
+  position: absolute; left: var(--x); bottom: -5%; font-size: var(--s); color: rgba(190, 210, 255, 0.35);
+  text-shadow: 0 0 8px rgba(150, 190, 255, 0.6); animation: runeRise var(--t) linear var(--d) infinite;
+  transition: color 0.3s ease, text-shadow 0.3s ease;
+}
+@keyframes runeRise {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 0.8; }
+  100% { transform: translateY(-110vh) rotate(180deg); opacity: 0; }
+}
+/* the staff answers a touch: every circle and the whole backdrop flare up together */
+.mc-rays, .mc-outer, .mc-inner, .staff-circle, .mc-orbit, .mc-ground svg, .mc-shaft svg { transition: opacity 0.3s ease, filter 0.3s ease; }
+.home-stage.charged .mc-outer, .home-stage.charged .mc-inner, .home-stage.charged .staff-circle {
+  opacity: 1; filter: brightness(2) drop-shadow(0 0 10px rgba(160, 225, 255, 1)) drop-shadow(0 0 22px rgba(120, 180, 255, 0.9));
+}
+.home-stage.charged .mc-rays { opacity: 1; filter: brightness(1.8); }
+.home-stage.charged .mc-orbit, .home-stage.charged .mc-ground svg, .home-stage.charged .mc-shaft svg {
+  filter: brightness(2.2) drop-shadow(0 0 10px rgba(255, 220, 140, 1)) drop-shadow(0 0 20px rgba(255, 200, 120, 0.8));
+}
+.home-stage.charged .deco-aurora { opacity: 1; filter: blur(24px) brightness(1.6); }
+.home-stage.charged .deco-constellation { opacity: 1; }
+.home-stage.charged .deco-constellation line { stroke: rgba(200, 225, 255, 0.8); }
+.home-stage.charged .deco-circle { opacity: 0.45; filter: brightness(1.8) drop-shadow(0 0 6px #9fc4ff); }
+.home-stage.charged .deco-tower { filter: brightness(1.8) drop-shadow(0 0 10px rgba(150, 200, 255, 0.7)); }
+.home-stage.charged .deco-runes span { color: #fff3c4; text-shadow: 0 0 10px rgba(255, 220, 140, 1); }
+.mc-ripple.surge { animation: mcSurge 1s ease-out forwards; border-width: 3px; }
+@keyframes mcSurge {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(4.5); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .deco-aurora, .deco-constellation circle, .deco-circle, .deco-tower .win, .deco-runes span { animation: none !important; }
+  .deco-runes { display: none; }
+}
+@media (max-width: 860px), (max-aspect-ratio: 4 / 5) {
+  .deco-tower { left: 62%; height: 44vh; opacity: 0.35; }
+  .deco-c1 { height: 46vh; }
+}
+
+/* the description panel takes over the space to the right of the menu, so the side column (trial
+   banner, notices) steps aside while it is open instead of showing through underneath */
+.home-side { transition: opacity 0.15s ease; }
+.home-columns.desc-open .home-side { opacity: 0; pointer-events: none; }
+.menu-desc-text { white-space: pre-line; }
+
+/* 基本強化・転生パネルは画面の高さちょうどに収め、スクロールするのはマップの中だけにする */
+#screen-tree.active, #screen-panel.active {
+  display: flex; flex-direction: column;
+  height: calc(100vh - 28px - 42px); height: calc(100dvh - 28px - 42px);
+}
+#screen-tree > .panel, #screen-panel > .panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+#screen-tree .tree-scroll-wrap, #screen-panel .panel-map-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
