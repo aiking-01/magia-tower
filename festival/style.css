@@ -1,0 +1,996 @@
+:root {
+  --seal: #8a3cc2;
+  --seal-red: #c8323c;
+  --bg: #0e1230;
+  --panel: #1a2148;
+  --panel-2: #242c5e;
+  --text: #e8ebf8;
+  --text-dim: #98a0cc;
+  --accent: #5468d6;
+  --hp: #e0455f;
+  --attack: #e0455f;
+  --draw: #4a8fe0;
+  --buff: #b463e0;
+  --percent: #4ade9e;
+  --special: #ff9c4a;
+  --chain: #ff6b35;
+  --poison: #7ed321;
+  --gold: #e0b84a;
+  --good: #4ade80;
+  --boss: #ff5c5c;
+  --locked: #333c72;
+}
+* { box-sizing: border-box; }
+/* stops iOS Safari from inflating font sizes of its own accord when the phone is turned sideways */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Yu Gothic", "Hiragino Sans", sans-serif;
+  min-height: 100vh;
+  min-height: 100dvh; /* mobile browsers: 100vh counts the collapsing address bar, 100dvh does not */
+  display: flex;
+  justify-content: center;
+  padding: 14px 16px;
+  /* viewport-fit=cover lets the art run under the notch/home indicator; the insets keep the UI out of them */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+/* title screen: the key art fills the entire viewport as a fixed background, not boxed inside
+   a panel; toggled via a body class from showScreen() rather than scoping the image to .home-hero */
+body.home-bg {
+  background: radial-gradient(circle at 30% 40%, rgba(14, 18, 48, 0.25), rgba(8, 10, 28, 0.7) 78%), url("../assets/title-banner.webp") center 38% / cover no-repeat fixed;
+}
+.app { width: 100%; max-width: 1300px; }
+/* screens meant to be read as a single narrow column (menus, results) stay capped and centered
+   even though .app itself is now wide, since a full-width button/text block looks stretched on a desktop monitor */
+.panel.narrow { max-width: 640px; margin-left: auto; margin-right: auto; }
+h1 {
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.screen { display: none; }
+.screen.active { display: block; }
+.panel {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border: 1px solid #2b3364;
+}
+
+/* ---- Home ---- */
+/* no panel background here: the key art shows through from body.home-bg behind it. The hero
+   fills most of the viewport height and the button group sits pinned to the bottom-left via
+   margin-top: auto, over a translucent scrim so it stays legible against any part of the art */
+.home-hero {
+  text-align: center; background: transparent; border: none; padding: 0; margin-bottom: 0;
+  min-height: min(640px, calc(100vh - 120px));
+  min-height: min(640px, calc(100dvh - 120px));
+  display: flex; flex-direction: column;
+}
+.home-hero .sub { color: var(--text-dim); font-size: 13px; margin-top: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
+/* the h1 and the stat row sit over the key art on the title screen, so they need the same scrim
+   the other text on this screen already has */
+body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
+/* deliberately small and low-contrast, and set apart from the main nav buttons, so it's not
+   mistaken for a normal action; the confirm() dialog on click is the real safety net */
+.reset-progress-btn {
+  display: block; margin: 14px auto 0; background: transparent; border: none;
+  color: var(--text-dim); font-size: 12px; text-decoration: underline; text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+  cursor: pointer; opacity: 0.7; padding: 4px;
+}
+.home-stats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 4px 0 10px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+}
+.home-stats b { color: var(--gold); font-size: 16px; }
+.home-banner-buttons {
+  margin-top: auto; margin-left: min(120px, 18%); text-align: left; width: min(280px, 70%);
+  background: rgba(10, 14, 38, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  border-radius: 12px; padding: 14px;
+}
+.home-banner-buttons .btn { margin: 6px 0; padding: 12px; font-size: 14px; }
+.home-banner-buttons .btn:first-child { margin-top: 0; }
+.home-banner-buttons .btn:last-child { margin-bottom: 0; }
+.btn {
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  margin: 10px 0;
+}
+.btn.primary { background: linear-gradient(160deg, var(--accent), #33409a); color: white; }
+.btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid #3c4680; font-size: 14px; padding: 12px; }
+.btn.ghost { background: transparent; color: var(--text-dim); border: 1px solid #333c72; font-size: 13px; padding: 10px; }
+.btn.glow-btn {
+  position: relative;
+  background: linear-gradient(160deg, var(--gold), var(--accent));
+  color: #10132c;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,0.4);
+  animation: glowPulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
+  background-size: 200% 200%;
+}
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px 8px rgba(224,184,74,0.95), 0 0 44px 16px rgba(124,92,255,0.8);
+    transform: scale(1.02);
+  }
+}
+@keyframes glowShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ---- Battle ---- */
+/* wide desktop layout: enemy zone on the left, stats+log stacked on the right; collapses to a
+   single column below ~860px so the game still works on a narrow window/mobile browser. */
+/* the enemy column's height is synced to match the stats+log column exactly via JS
+   (syncEnemyVisualHeight), not CSS grid stretch: log-panel must stay a hard fixed height (see
+   below) rather than flex-growing, or its height goes back to ballooning with content, and
+   without a flex-grow anchor on the right column, pure-CSS stretch just leaves empty space
+   after the log panel instead of truly matching bottoms. JS measures the real, final layout
+   and sets an explicit px height on .enemy-visual, which is simpler and exact. */
+.battle-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+.battle-side { display: flex; flex-direction: column; gap: 14px; }
+/* .panel's own margin-bottom (used for normal block-flow spacing elsewhere) stacks on top of
+   this flex gap and was adding an extra 14px both between and after these two panels — that
+   was the actual source of the leftover gap under the log panel */
+.battle-side .panel { margin-bottom: 0; }
+@media (max-width: 860px) {
+  .battle-layout { grid-template-columns: 1fr; }
+  /* the matching height overrides for .enemy-visual / .log-panel are in the responsive section at
+     the end of this file: at equal specificity they have to come after those base rules to win */
+}
+.enemy-visual {
+  height: min(220px, 28vh); border-radius: 10px; margin-top: 12px; position: relative; overflow: hidden;
+  background: radial-gradient(circle at 50% 38%, #1e2554, #0c1030 72%);
+  border: 1px dashed #3c4680;
+  display: flex; align-items: center; justify-content: center;
+}
+.enemy-visual.boss { border-color: var(--boss); }
+/* regular (non-boss) floors show the dungeon backdrop behind the now-transparent character art;
+   boss floors (mid-boss and final boss) keep a plain black backdrop for a more dramatic, focused look */
+.enemy-visual.has-backdrop {
+  background-image: radial-gradient(circle at 50% 38%, rgba(44,39,57,0.35), rgba(22,20,29,0.75) 72%), url("../enemies/bg-dungeon.webp");
+  background-size: cover; background-position: center;
+}
+.enemy-visual.boss-bg { background: #000; }
+.enemy-visual img { width: 100%; height: 100%; object-fit: contain; }
+.enemy-visual-hint { color: var(--text-dim); font-size: 13px; letter-spacing: 1px; text-align: center; }
+.floor-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.floor-label { font-size: 12px; color: var(--text-dim); }
+.enemy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.enemy-name { font-size: 18px; font-weight: 700; }
+.enemy-name.boss { color: var(--boss); }
+.enemy-hp-num { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 14px; }
+.bar-track { background: #0a0e26; border-radius: 8px; height: 18px; overflow: hidden; position: relative; }
+.bar-fill { height: 100%; background: linear-gradient(90deg, var(--hp), #ff8a9e); transition: width 0.35s ease; }
+.bar-fill.boss { background: linear-gradient(90deg, #7a1c1c, var(--boss)); }
+.stats-row { display: flex; gap: 8px; }
+.stat-box { flex: 1; background: var(--panel-2); border-radius: 8px; padding: 8px 10px; text-align: center; }
+.stat-label { font-size: 11px; color: var(--text-dim); }
+.stat-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.buff-active { color: var(--buff) !important; }
+.log-panel { height: 90px; overflow-y: auto; font-size: 13px; color: var(--text-dim); display: flex; flex-direction: column-reverse; }
+.battle-side .log-panel { height: 260px; } /* fixed height regardless of how long the battle runs; scrolls internally */
+.log-line { padding: 2px 0; }
+.log-line.dmg { color: var(--attack); }
+.log-line.info { color: var(--draw); }
+.log-line.buff { color: var(--buff); }
+.log-line.percent { color: var(--percent); }
+.log-line.gold { color: var(--gold); }
+.log-line.crit { color: #ff4d4d; font-weight: 700; }
+.hand-title { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; }
+.hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.card {
+  border-radius: 10px; padding: 10px 8px; cursor: pointer; text-align: center; user-select: none;
+  border: 1px solid transparent; transition: transform 0.12s ease, border-color 0.12s ease;
+  min-height: 92px; display: flex; flex-direction: column;
+}
+.card:active { transform: translateY(-1px); }
+.card.attack { background: linear-gradient(160deg, #3a1f28, #2a1620); }
+.card.draw { background: linear-gradient(160deg, #1c2c3e, #16222f); }
+.card.buff { background: linear-gradient(160deg, #301f3e, #23172d); }
+.card.percent { background: linear-gradient(160deg, #1c3e30, #16291f); }
+.card.special { background: linear-gradient(160deg, #3e2c1c, #291e16); }
+.card.chain { background: linear-gradient(160deg, #4a1f14, #2e130c); }
+.card.poison { background: linear-gradient(160deg, #223a14, #182710); }
+.card-type { font-size: 10px; color: var(--text-dim); }
+.card-name { font-size: 13px; font-weight: 700; margin: 4px 0; }
+/* rank/crit-note are always rendered (even empty) with a fixed reserved height, so a card's
+   name/value line always sits at the same spot whether or not it happens to have that extra text */
+.card-rank { font-size: 10px; color: var(--gold); font-weight: 700; height: 12px; line-height: 12px; overflow: hidden; }
+.card-value { font-size: 18px; font-weight: 800; margin-top: auto; padding-top: 4px; }
+.card.attack .card-value { color: var(--attack); }
+.card.draw .card-value { color: var(--draw); }
+.card.buff .card-value { color: var(--buff); }
+.card.percent .card-value { color: var(--percent); }
+.card.special .card-value { color: var(--special); }
+.card.chain .card-value { color: var(--chain); }
+.card.poison .card-value { color: var(--poison); }
+.card-crit-note { font-size: 9px; color: var(--gold); margin-top: 2px; height: 22px; line-height: 11px; overflow: hidden; }
+.deck-info { text-align: center; font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+
+/* ---- Card play effect: a quick pop + fade on the card itself when it's used ---- */
+.card.playing { animation: cardPlayFx 0.16s ease forwards; pointer-events: none; }
+/* 割合カードは1階1回まで: 使った後に手札に残っている分 */
+.card.spent { opacity: 0.4; filter: grayscale(0.7); cursor: not-allowed; }
+@keyframes cardPlayFx {
+  0% { transform: translateY(0) scale(1); filter: brightness(1); }
+  35% { transform: translateY(-10px) scale(1.08); filter: brightness(1.5); box-shadow: 0 0 16px rgba(255,255,255,0.55); }
+  100% { transform: translateY(-26px) scale(0.85); opacity: 0; filter: brightness(1.7); }
+}
+
+/* ---- Card back (placeholder pattern until real art is sent): shared by the deck pile
+   and the face-down side of a card that's about to flip in ---- */
+.deck-pile-card, .card-flip-face.card-back {
+  background: repeating-linear-gradient(135deg, #242c5e, #242c5e 7px, #1a2148 7px, #1a2148 14px);
+  border: 1px solid #3c4680; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.deck-pile-card.back-1::after, .card-flip-face.card-back::after {
+  content: "MT"; color: var(--text-dim); font-size: 12px; font-weight: 800; letter-spacing: 1px; opacity: 0.5;
+}
+
+/* ---- Deck pile: a grid item inside #hand (always appended last), so it automatically gets
+   the exact same cell size as a card and sits to the right of the hand ---- */
+.deck-pile { position: relative; min-height: 92px; pointer-events: none; }
+.deck-pile-card { position: absolute; inset: 0; }
+.deck-pile-card.back-3 { transform: translate(4px, 4px); opacity: 0.45; }
+.deck-pile-card.back-2 { transform: translate(2px, 2px); opacity: 0.7; }
+.deck-pile-label { position: absolute; top: -17px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); }
+.deck-pile-count {
+  position: absolute; bottom: -8px; right: -8px; background: var(--panel); border: 1px solid #3c4680;
+  color: var(--gold); font-size: 11px; font-weight: 800; border-radius: 999px; padding: 2px 7px; min-width: 20px; text-align: center;
+}
+
+/* ---- Draw-in flip: a newly drawn card enters face-down, then flips to reveal itself ---- */
+/* the outer is the click target (the handler is bound here in renderBattle) and the only layer that
+   never rotates. z-index lifts it over the deck pile, which it flies out of and would otherwise
+   slide underneath. */
+.card-flip-outer { perspective: 900px; min-height: 92px; cursor: pointer; z-index: 1; }
+/* the spinning faces are decoration only. Without this, hit-testing lands on whichever face is
+   toward the viewer -- the card BACK for the ~1.1s the reveal takes -- and the card is dead to
+   clicks the whole time it is animating in. */
+.card-flip-inner, .card-flip-face { pointer-events: none; }
+.card-flip-inner {
+  position: relative; width: 100%; height: 100%; min-height: 92px;
+  transform-style: preserve-3d; transition: transform 0.24s ease;
+}
+.card-flip-inner.flipped { transform: rotateY(180deg); }
+.card-flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 10px; }
+.card-flip-face.card-front { transform: rotateY(180deg); }
+
+/* ---- Reward / end screens ---- */
+.reward-title { text-align: center; font-size: 22px; font-weight: 800; margin: 6px 0 2px; }
+.reward-title.win { color: var(--good); }
+.reward-title.lose { color: var(--hp); }
+.reward-sub { text-align: center; color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+.gold-earned { text-align: center; color: var(--gold); font-size: 15px; margin-bottom: 14px; }
+.option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.option-card {
+  background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
+  border: 1px solid #333c72; cursor: pointer;
+}
+.option-card .oc-name { font-weight: 800; font-size: 15px; margin-bottom: 6px; }
+.option-card .oc-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; min-height: 32px; }
+.option-card .oc-cost { font-size: 13px; color: var(--gold); font-weight: 700; }
+.option-card.disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Floor select ---- */
+.floor-select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.floor-select-card {
+  background: var(--panel-2); border-radius: 10px; padding: 14px 10px; text-align: center;
+  border: 1px solid #333c72; cursor: pointer;
+}
+.floor-select-card.boss { border-color: var(--boss); }
+.fs-floor { font-weight: 800; font-size: 17px; }
+.fs-floor.boss { color: var(--boss); }
+.fs-hp { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+/* ---- Deck enhancement zone (title screen) ---- */
+.deck-zone-title { font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.deck-zone-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+.deck-zone-list { display: flex; flex-direction: column; gap: 8px; max-height: 520px; overflow-y: auto; }
+.deck-zone-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--panel-2); border-radius: 8px; padding: 8px 10px;
+}
+.dz-info { min-width: 0; }
+.dz-name { font-weight: 700; font-size: 13px; }
+.dz-meta { font-size: 11px; color: var(--text-dim); }
+.dz-active { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.dz-active-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 58px; text-align: center; }
+.dz-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dz-btn {
+  background: var(--panel); border: 1px solid #3c4680; color: var(--text);
+  padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.dz-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ---- Level-up tree ---- */
+.tree-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tree-screen-title { text-align: center; font-weight: 800; font-size: 15px; color: var(--text-dim); margin-bottom: 10px; }
+.tree-points { font-size: 14px; color: var(--text-dim); }
+.tree-points b { color: var(--gold); font-size: 18px; }
+.tree-scroll-wrap {
+  overflow: auto; margin: 0 -16px; padding: 0 16px 8px;
+  max-height: min(640px, calc(100vh - 240px)); /* shrink to the actual window instead of forcing the page to scroll */
+  max-height: min(640px, calc(100dvh - 240px));
+  cursor: grab; -webkit-user-select: none; user-select: none;
+  touch-action: none; /* drag-pan and pinch-zoom are handled in JS; let it own the gesture */
+}
+.tree-scroll-wrap.dragging { cursor: grabbing; }
+.tree-map-scaler { position: relative; }
+.tree-map-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; } /* width/height set from JS to fit the actual tree content */
+.tree-map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.tree-map-svg line { stroke: var(--locked); stroke-width: 2; }
+.tree-map-svg line.active { stroke: var(--accent); stroke-width: 3; }
+/* spider-web rings on the reincarnation panel: curved (not straight) threads circling the core,
+   drawn with the exact same weight/opacity as the spokes — real structural lines, not a faint overlay */
+.tree-map-svg path.web-strand { fill: none; stroke: var(--locked); stroke-width: 2; }
+.tree-map-svg path.web-strand.active { stroke: var(--accent); stroke-width: 3; }
+.tree-map-node {
+  position: absolute; transform: translate(-50%, -50%); width: 84px; text-align: center;
+  border-radius: 10px; padding: 6px 5px; font-size: 10px; cursor: default;
+  border: 2px solid var(--locked); background: var(--panel-2);
+}
+.tree-map-node .tn-name { font-weight: 800; margin-bottom: 2px; }
+.tree-map-node .tn-desc { color: var(--text-dim); font-size: 10px; margin-bottom: 4px; }
+.tree-map-node .tn-cost { font-size: 11px; font-weight: 700; }
+.tree-map-node.locked { opacity: 0.5; }
+.tree-map-node.available { border-color: var(--gold); cursor: pointer; }
+.tree-map-node.available .tn-cost { color: var(--gold); }
+.tree-map-node.unaffordable { border-color: var(--locked); cursor: not-allowed; }
+.tree-map-node.unaffordable .tn-cost { color: var(--text-dim); }
+.tree-map-node.unlocked { border-color: var(--good); background: linear-gradient(160deg, #1c3a28, #16291f); cursor: default; }
+.tree-map-node.unlocked .tn-cost { color: var(--good); }
+.tree-legend { display: flex; gap: 14px; justify-content: center; font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+.tree-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.tree-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---- Reincarnation panel (same visual language and pan/zoom mechanics as the basic tree) ---- */
+.panel-map-wrap {
+  overflow: auto; margin: 0 -16px; padding: 0 16px 8px;
+  max-height: min(640px, calc(100vh - 210px)); /* shrink to the actual window instead of forcing the page to scroll */
+  max-height: min(640px, calc(100dvh - 210px));
+  cursor: grab; -webkit-user-select: none; user-select: none;
+  touch-action: none; /* drag-pan and pinch-zoom are handled in JS; let it own the gesture */
+}
+.panel-map-wrap.dragging { cursor: grabbing; }
+.panel-map-scaler { position: relative; }
+/* .panel-map-container's width/height is set from JS to fit the actual branch layout, same as the basic tree */
+.tree-map-node.panel-special {
+  width: 112px; padding: 8px 6px; font-size: 11px; border-width: 3px;
+}
+.tree-map-node.panel-special.available {
+  animation: specialGlow 1.5s ease-in-out infinite;
+}
+@keyframes specialGlow {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(224,184,74,0.5); }
+  50% { box-shadow: 0 0 22px 9px rgba(224,184,74,0.95); }
+}
+.tree-map-node.core {
+  width: 108px; height: 108px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  font-weight: 800; font-size: 14px; cursor: pointer;
+  border: 2px solid rgba(255,255,255,0.5);
+  background: linear-gradient(160deg, var(--gold), var(--accent));
+  background-size: 200% 200%;
+  color: #10132c;
+  box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
+  animation: corePulse 1.4s ease-in-out infinite, glowShift 3.2s ease-in-out infinite;
+}
+.tree-map-node.core .core-sub { font-size: 10px; font-weight: 600; margin-top: 4px; opacity: 0.85; }
+/* .tree-map-node already centers itself on its (left,top) point via transform: translate(-50%,-50%);
+   this keeps that translate in every keyframe so the pulse scale doesn't knock the core off-center
+   (unlike .btn.glow-btn, which has no positioning transform to preserve). */
+@keyframes corePulse {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(224,184,74,0.6), 0 0 18px 5px rgba(124,92,255,0.45);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    box-shadow: 0 0 24px 8px rgba(224,184,74,0.95), 0 0 44px 16px rgba(124,92,255,0.8);
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+}
+
+/* left/top set from JS are a random point over the enemy art for this hit; translate(-50%,-50%)
+   centers the number on that point regardless of how wide the text turns out to be (a plain
+   "-18" vs. a full "CRITICAL-12,345"), so it never gets planted off-center at the edges. */
+.dmg-float {
+  position: fixed; font-weight: 800; color: var(--attack); pointer-events: none;
+  font-size: 26px; z-index: 20; transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 6px rgba(0,0,0,0.6)); text-align: center; white-space: nowrap;
+  /* bounce (see .dmg-char below) plays out first, then this holds it fully visible for a beat
+     before dropping fast to 0 right at the end -- duration matches DMG_LIFETIME_MS in game.js,
+     which removes the element from the DOM exactly as the fade finishes */
+  animation: dmgHoldFade 0.85s ease-in forwards;
+}
+.dmg-float.dmg-big { font-size: 42px; }
+.dmg-float.dmg-huge {
+  font-size: 68px; color: var(--gold);
+  filter: drop-shadow(0 0 16px var(--gold)) drop-shadow(0 0 4px rgba(0,0,0,0.8));
+}
+.dmg-float.dmg-crit {
+  font-size: 50px; color: #ff4d4d;
+  filter: drop-shadow(0 0 16px #ff4d4d) drop-shadow(0 0 4px rgba(0,0,0,0.85));
+}
+.dmg-float.dmg-crit.dmg-huge { font-size: 76px; }
+
+/* damage numbers are rendered as glyph IMAGES (assets/dmg-font/*.png, pre-rendered from a
+   licensed font whose terms forbid shipping the font file itself where it could be extracted --
+   see assets/dmg-font/LICENSE-NOTE.txt), not text. Each .dmg-char is a currentColor-masked glyph
+   image, so it still inherits every color/glow rule above unchanged; only the stroke look that
+   used to come from -webkit-text-stroke is gone (the source font's own outline style covers that). */
+.dmg-char {
+  display: inline-block; height: 1em; vertical-align: baseline;
+  background-color: currentColor;
+  -webkit-mask-image: var(--dmg-glyph); mask-image: var(--dmg-glyph);
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  aspect-ratio: var(--dmg-aspect, 1);
+  /* each char bounces in on its own, staggered via an inline animation-delay set in
+     appendDmgChars(), so the string hops left-to-right like a little wave instead of
+     appearing all at once */
+  transform-origin: bottom center;
+  animation: dmgCharBounce 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+/* plain-text fallback for the glyph images (file:// can't load mask images), same bounce */
+.dmg-text {
+  display: inline-block; transform-origin: bottom center;
+  animation: dmgCharBounce 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes dmgCharBounce {
+  0% { transform: translateY(10px) scale(0.6); }
+  55% { transform: translateY(-9px) scale(1.12); }
+  80% { transform: translateY(2px) scale(0.97); }
+  100% { transform: translateY(0) scale(1); }
+}
+/* the last character's bounce (capped stagger + bounce duration) finishes around ~750ms into a
+   1100ms lifetime; staying fully opaque to 75% (825ms) leaves a short hold after that before
+   the quick fade over the remaining quarter of the timeline. */
+@keyframes dmgHoldFade {
+  0%, 75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---- Impact juice: screen shake + flash for crit / huge hits ---- */
+.app.shake-huge { animation: shakeHuge 0.4s ease-in-out; }
+.app.shake-crit { animation: shakeCrit 0.45s ease-in-out; }
+.app.shake-mega { animation: shakeMega 0.5s ease-in-out; }
+@keyframes shakeHuge {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-5px, 3px); }
+  50% { transform: translate(5px, -3px); }
+  75% { transform: translate(-3px, 2px); }
+}
+@keyframes shakeCrit {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-7px, 4px) rotate(-0.6deg); }
+  40% { transform: translate(6px, -4px) rotate(0.6deg); }
+  60% { transform: translate(-5px, 3px) rotate(-0.4deg); }
+  80% { transform: translate(3px, -2px) rotate(0.3deg); }
+}
+@keyframes shakeMega {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  15% { transform: translate(-11px, 6px) rotate(-1deg); }
+  30% { transform: translate(10px, -7px) rotate(1deg); }
+  45% { transform: translate(-9px, 5px) rotate(-0.8deg); }
+  60% { transform: translate(8px, -4px) rotate(0.6deg); }
+  75% { transform: translate(-5px, 3px) rotate(-0.4deg); }
+  90% { transform: translate(3px, -2px) rotate(0.2deg); }
+}
+.screen-flash {
+  position: fixed; inset: 0; pointer-events: none; z-index: 15; opacity: 0;
+}
+.screen-flash.flash-huge {
+  background: radial-gradient(circle, rgba(224,184,74,0.32), transparent 70%);
+  animation: flashPulse 0.45s ease-out;
+}
+.screen-flash.flash-crit {
+  background: radial-gradient(circle, rgba(255,77,77,0.38), transparent 70%);
+  animation: flashPulse 0.45s ease-out;
+}
+@keyframes flashPulse {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+
+/* ---- Hover states ----
+   gated behind (hover: hover) because on a touch screen a :hover style latches on after a tap
+   and stays until the next tap elsewhere, leaving cards and tree nodes looking selected.
+   :active is left ungated on purpose: it gives real press feedback on touch too. */
+@media (hover: hover) {
+  .reset-progress-btn:hover { opacity: 1; color: var(--hp); }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.glow-btn:hover { filter: brightness(1.15); }
+  .card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,0.3); }
+  .option-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .floor-select-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .floor-select-card.boss:hover { border-color: var(--boss); }
+  .dz-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .dz-btn.danger:hover:not(:disabled) { border-color: var(--hp); }
+  .tree-map-node.available:hover { transform: translate(-50%, -50%) scale(1.05); }
+  .tree-map-node.core:hover { filter: brightness(1.15); }
+}
+
+/* ---- Responsive ----
+   860px is the battle screen's two-column -> one-column switch (mirrored in JS by
+   syncEnemyVisualHeight, which stops height-matching below it). 640px is the phone layout. */
+@media (max-width: 640px) {
+  body {
+    padding: 10px 10px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  h1 { font-size: 15px; letter-spacing: 1px; margin-bottom: 8px; }
+  .panel { padding: 12px; border-radius: 10px; margin-bottom: 10px; }
+
+  /* ios ignores background-attachment: fixed and renders the key art at the wrong scale;
+     the home screen is about one viewport tall anyway, so scrolling with the page is fine */
+  .home-hero { min-height: calc(100dvh - 130px); }
+  .home-stats { flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+  .home-stats b { font-size: 15px; }
+  /* full width along the bottom instead of inset from the left: there is no room on a phone
+     for the art to breathe beside the buttons */
+  .home-banner-buttons { margin-left: 0; width: 100%; padding: 12px; }
+  .home-hero .sub { font-size: 12px; }
+
+  /* three cards per row at 360px rather than two half-empty ones */
+  .hand-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .card { min-height: 84px; padding: 8px 6px; }
+  .card-name { font-size: 12px; }
+  .card-value { font-size: 16px; }
+  .card-crit-note { height: 20px; }
+  .deck-pile, .card-flip-outer, .card-flip-inner { min-height: 84px; }
+  .deck-info { font-size: 11px; }
+
+  .enemy-name { font-size: 16px; }
+  .stats-row { gap: 6px; }
+  .stat-box { padding: 6px 4px; }
+  .stat-label { font-size: 10px; }
+  .stat-value { font-size: 17px; }
+
+  /* side-by-side options are too cramped to read at this width */
+  .option-grid { grid-template-columns: 1fr; gap: 10px; }
+  .option-card .oc-desc { min-height: 0; }
+  .floor-select-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .fs-floor { font-size: 15px; }
+
+  /* the back button and the points readout stop fitting on one line */
+  .tree-header { flex-wrap: wrap; gap: 8px; }
+  .tree-points { font-size: 13px; }
+  /* negative margins must track .panel's reduced padding or the map bleeds past the panel edge */
+  .tree-scroll-wrap, .panel-map-wrap {
+    margin: 0 -12px; padding: 0 12px 8px;
+    max-height: calc(100vh - 230px);
+    max-height: calc(100dvh - 230px);
+  }
+  .tree-legend { gap: 10px; font-size: 10px; flex-wrap: wrap; }
+
+  /* name / -+ / 強化・削除 each get their own full-width line. This used to let .dz-active and
+     .dz-actions share a line and only wrap if they didn't fit -- which meant a card's row was 2
+     lines normally but silently became a cramped 3rd line once its rank-up cost grew past a few
+     digits (repeated rank-ups double the cost every time, so this was reachable in a real save,
+     not just a theoretical edge case). Always stacking the three gives 強化/削除 the row's full
+     width every time, so a long cost number never has to fight the -+ controls for space. */
+  .deck-zone-list { max-height: none; }
+  .deck-zone-row { flex-wrap: wrap; gap: 8px; }
+  .dz-info { flex: 1 1 100%; }
+  .dz-active { flex: 1 1 100%; }
+  .dz-actions { flex: 1 1 100%; margin-left: 0; justify-content: flex-end; }
+
+  .reward-title { font-size: 19px; }
+  .reward-sub { font-size: 12px; margin-bottom: 14px; }
+
+  /* the desktop sizes are wider than a phone screen at four or more digits */
+  .dmg-float { font-size: 20px; }
+  .dmg-float.dmg-big { font-size: 30px; }
+  .dmg-float.dmg-huge { font-size: 42px; }
+  .dmg-float.dmg-crit { font-size: 32px; }
+  .dmg-float.dmg-crit.dmg-huge { font-size: 48px; }
+}
+
+@media (max-width: 400px) {
+  .hand-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+  .card { min-height: 78px; }
+  .deck-pile, .card-flip-outer, .card-flip-inner { min-height: 78px; }
+  .home-stats { font-size: 11px; }
+  .btn { padding: 13px; font-size: 15px; }
+  .floor-select-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+}
+
+/* phone held sideways: almost no vertical room, so the tall fixed blocks have to give.
+   The battle heights for this case live with the other .enemy-visual / .log-panel overrides below. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .home-hero { min-height: calc(100dvh - 90px); }
+  .tree-scroll-wrap, .panel-map-wrap {
+    max-height: calc(100vh - 170px);
+    max-height: calc(100dvh - 170px);
+  }
+}
+/* ...and here the width is not the problem, the height is, so the stacking that (max-width: 860px)
+   just applied is undone: side by side keeps the hand near the fold instead of pushing it a whole
+   enemy panel further down. isStackedBattleLayout() in game.js mirrors these two conditions. */
+@media (max-height: 520px) and (min-width: 640px) and (orientation: landscape) {
+  .battle-layout { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr); }
+}
+
+/* stacked battle layout: the desktop heights were sized for a side column and a synced enemy
+   panel, and together they push the hand below the fold on a phone. Has to sit after the base
+   .enemy-visual / .log-panel rules to win the cascade at equal specificity. */
+@media (max-width: 860px) {
+  .battle-side .log-panel { height: 120px; }
+  .enemy-visual { height: min(220px, 26vh); }
+}
+@media (max-width: 640px) {
+  .battle-side .log-panel { height: 100px; }
+  .enemy-visual { height: min(190px, 24vh); margin-top: 10px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .battle-side .log-panel { height: 90px; }
+  .enemy-visual { height: min(150px, 34vh); }
+}
+
+/* ios and android render background-attachment: fixed at the wrong scale (or not at all); the
+   home screen is about one viewport tall anyway, so letting the art scroll with it costs nothing */
+@media (pointer: coarse) {
+  body.home-bg { background-attachment: scroll; }
+}
+
+/* the key art is a 1.68:1 landscape banner, so on a portrait window `cover` blows it up until
+   only the middle of the wordmark is left. Fit the whole banner across the top instead and let
+   the gradient fill the rest — which is where the button block sits anyway. */
+@media (max-aspect-ratio: 1 / 1) {
+  body.home-bg {
+    /* the banner runs edge to edge, laid in 96px down so it starts below the h1 and the stat row
+       instead of colliding with them. At full width its height is exactly 100vw/1.68, so both of
+       its edges are known (96px and calc(96px + 60vw)) whatever the viewport height is, and the
+       overlay can fade them both into the page background rather than leaving a hard-edged
+       rectangle floating in the middle of the screen. */
+    background-image:
+      linear-gradient(to bottom,
+        var(--bg) 0,
+        var(--bg) 80px,
+        rgba(14, 18, 48, 0.18) 120px,
+        rgba(14, 18, 48, 0.18) calc(96px + 34vw),
+        var(--bg) calc(96px + 60vw)),
+      url("../assets/title-banner.webp");
+    background-position: center top, center 96px;
+    background-size: auto, 100% auto;
+  }
+}
+
+/* ---- Remnant follow-up hits: own color, quick flash on the enemy instead of screen shake ---- */
+.dmg-float.dmg-remnant {
+  font-size: 22px; color: #6fe3ff;
+  filter: drop-shadow(0 0 10px #6fe3ff) drop-shadow(0 0 3px rgba(0,0,0,0.8));
+}
+.enemy-visual.remnant-hit img { animation: remnantHitFlash 0.18s ease-out; }
+@keyframes remnantHitFlash {
+  0% { filter: brightness(2.2) saturate(0.4); transform: translateX(3px); }
+  100% { filter: none; transform: none; }
+}
+.log-line.remnant { color: #6fe3ff; }
+.log-line.levelup { color: var(--gold); font-weight: 800; }
+
+/* ---- Tabs (プレイヤー強化 / 残滓強化, shown once a remnant exists) ---- */
+.tab-bar { display: flex; gap: 6px; margin: 0 0 10px; }
+.tab-btn {
+  flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #3c4680; cursor: pointer;
+  background: var(--panel-2); color: var(--text-dim); font-weight: 800; font-size: 13px;
+}
+.tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- Achievements ---- */
+.ach-list { display: flex; flex-direction: column; gap: 6px; }
+.ach-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+  background: var(--panel-2); opacity: 0.6;
+}
+.ach-row.done { opacity: 1; border-left: 3px solid var(--gold); }
+.ach-info { flex: 1; min-width: 0; }
+.ach-name { font-weight: 800; font-size: 13px; }
+.ach-desc { font-size: 11px; color: var(--text-dim); }
+.ach-reward { font-size: 11px; color: var(--gold); text-align: right; }
+.ach-state { font-size: 11px; color: var(--text-dim); min-width: 3em; text-align: right; }
+.ach-row.done .ach-state { color: var(--good); }
+
+/* ---- Remnants ---- */
+.remnant-list { display: flex; flex-direction: column; gap: 10px; }
+.remnant-box { border: 1px solid #3c4680; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.remnant-name { font-weight: 800; color: #6fe3ff; }
+.remnant-meta { font-size: 11px; color: var(--text-dim); }
+.rt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.rt-branch { display: flex; flex-direction: column; gap: 6px; }
+.rt-branch-title { font-weight: 800; font-size: 13px; text-align: center; color: #6fe3ff; }
+.rt-summary { font-size: 11px; text-align: center; color: var(--text-dim); }
+.rt-node {
+  border: 2px solid var(--locked); background: var(--panel-2); border-radius: 10px;
+  padding: 6px 5px; font-size: 10px; text-align: center;
+}
+.rt-node.locked { opacity: 0.5; }
+.rt-node.available { border-color: var(--gold); cursor: pointer; }
+.rt-node.available .tn-cost { color: var(--gold); }
+.rt-node.unaffordable .tn-cost { color: var(--text-dim); }
+.rt-node.unlocked { border-color: var(--good); background: linear-gradient(160deg, #1c3a28, #16291f); }
+.rt-node.unlocked .tn-cost { color: var(--good); }
+
+/* ---- Idle report / toasts ---- */
+.idle-report { font-size: 12px; color: #6fe3ff; margin-top: 10px; min-height: 1em; text-shadow: 0 1px 6px rgba(0,0,0,0.85); }
+.toast-area { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 6px; width: min(92vw, 460px); pointer-events: none; }
+.toast {
+  background: var(--panel); border: 1px solid var(--gold); color: var(--text); border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  animation: toastIn 0.25s ease-out, toastOut 0.4s ease-in 3.1s forwards;
+}
+@keyframes toastIn { 0% { opacity: 0; transform: translateY(-8px); } 100% { opacity: 1; transform: none; } }
+@keyframes toastOut { 100% { opacity: 0; transform: translateY(-8px); } }
+
+/* ---- Merchant auto-buy ---- */
+.auto-buy-row { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
+.auto-buy-row .btn { margin: 0; flex: 1; }
+.auto-buy-toggle { font-size: 12px; color: var(--text-dim); white-space: nowrap; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.auto-buy-summary { font-size: 12px; color: var(--gold); min-height: 1em; margin-top: 6px; }
+
+/* ---- Confirm modal (in-page replacement for window.confirm(), see showConfirm() in game.js) ---- */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: rgba(5,7,20,0.72); align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.active { display: flex; animation: modalFadeIn 0.15s ease-out; }
+.modal-box {
+  background: var(--panel); border: 1px solid #2b3364; border-radius: 14px;
+  padding: 22px; max-width: 420px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  /* a phone held sideways is only ~320px tall: scroll inside the box instead of clipping OK off-screen */
+  max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto;
+}
+.modal-message { white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin-bottom: 18px; }
+.modal-actions { display: flex; gap: 10px; }
+.modal-actions .btn { margin: 0; }
+@keyframes modalFadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+/* =====================================================================
+   文化祭体験版で追加したもの
+   ===================================================================== */
+
+/* ---- Title: buttons on the left, ranking on the right ---- */
+.home-columns { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.home-columns .home-banner-buttons { margin-top: 0; }
+.home-side { width: min(320px, 40%); margin-right: min(60px, 4%); }
+.btn-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  background: var(--gold); color: #10132c; vertical-align: middle;
+}
+.btn.pulse { border-color: var(--gold); animation: treePulse 1.3s ease-in-out infinite; }
+@keyframes treePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224,184,74,0.0); }
+  50% { box-shadow: 0 0 14px 3px rgba(224,184,74,0.75); }
+}
+
+/* ---- Seal look: a red hanko "封" stamp over a dark, striped, slowly shimmering plate ---- */
+.seal-stamp {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--seal-red);
+  color: var(--seal-red); font-weight: 900; font-size: 17px; line-height: 1;
+  background: rgba(200,50,60,0.12); transform: rotate(-12deg);
+  font-family: "Yu Mincho", "Hiragino Mincho ProN", serif;
+  box-shadow: 0 0 6px rgba(200,50,60,0.45), inset 0 0 4px rgba(200,50,60,0.4);
+}
+.seal-stamp.small { width: 24px; height: 24px; font-size: 13px; border-width: 2px; }
+.sealed-heading {
+  margin: 12px 0 6px; font-size: 11px; letter-spacing: 3px; color: #c9a2f0; text-align: center;
+  display: flex; align-items: center; gap: 8px;
+}
+.sealed-heading::before, .sealed-heading::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--seal), transparent); }
+.sealed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sealed-tile, .teaser-row, .btn.sealed-btn, .floor-select-card.sealed-card {
+  position: relative; overflow: hidden; cursor: pointer;
+  background:
+    repeating-linear-gradient(135deg, rgba(138,60,194,0.10) 0 6px, rgba(0,0,0,0) 6px 14px),
+    linear-gradient(160deg, #1b1430, #120c22);
+  border: 1px solid #4a2a6e; color: #8f86b3;
+}
+/* the light sweeping across a sealed plate, now and then */
+.sealed-tile::after, .teaser-row::after, .btn.sealed-btn::after, .floor-select-card.sealed-card::after, .tree-map-node.sealed::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(201,162,240,0.28), transparent);
+  animation: sealShine 3.6s ease-in-out infinite;
+}
+@keyframes sealShine {
+  0%, 55% { left: -60%; }
+  100% { left: 130%; }
+}
+.sealed-tile {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 800; text-align: left; font-family: inherit;
+}
+.sealed-tile .sealed-name { line-height: 1.25; }
+#screen-home .home-banner-buttons { width: min(320px, 80%); }
+.btn.sealed-btn { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; padding: 12px; }
+
+/* ---- Seal modal ---- */
+.seal-box {
+  text-align: center; position: relative; border-color: #4a2a6e;
+  background: radial-gradient(circle at 50% 0%, #2a1a45, var(--panel) 70%);
+}
+.seal-box-stamp {
+  width: 74px; height: 74px; margin: 2px auto 10px; border-radius: 50%; border: 3px solid var(--seal-red);
+  color: var(--seal-red); display: flex; align-items: center; justify-content: center;
+  font-size: 40px; font-weight: 900; font-family: "Yu Mincho", "Hiragino Mincho ProN", serif;
+  transform: rotate(-12deg); box-shadow: 0 0 18px rgba(200,50,60,0.55), inset 0 0 8px rgba(200,50,60,0.5);
+  animation: stampIn 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+@keyframes stampIn { 0% { transform: rotate(-12deg) scale(2.2); opacity: 0; } 100% { transform: rotate(-12deg) scale(1); opacity: 1; } }
+.seal-box-kicker { font-size: 12px; color: #c9a2f0; letter-spacing: 2px; }
+.seal-box-name { font-size: 22px; font-weight: 900; margin: 6px 0 10px; }
+.seal-box-text { font-size: 14px; line-height: 1.75; color: var(--text); text-align: left; }
+.seal-box-foot { margin: 14px 0 4px; color: var(--gold); font-weight: 800; letter-spacing: 3px; font-size: 13px; }
+
+/* ---- Ranking ---- */
+.ranking-box {
+  background: rgba(10, 14, 38, 0.72); border: 1px solid #3c4680; border-radius: 12px; padding: 10px 14px;
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); text-align: left; margin: 10px 0;
+}
+.ranking-title { font-size: 12px; font-weight: 800; color: var(--gold); letter-spacing: 1px; margin-bottom: 6px; text-align: center; }
+.ranking-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.ranking-list li { display: flex; gap: 8px; padding: 3px 2px; border-bottom: 1px dashed rgba(60,70,128,0.5); }
+.ranking-list li:last-child { border-bottom: none; }
+.ranking-list li.me { color: var(--gold); font-weight: 800; }
+.ranking-list .rk { width: 2.2em; color: var(--text-dim); }
+.ranking-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranking-list .tm { font-variant-numeric: tabular-nums; }
+.ranking-list .ranking-empty { color: var(--text-dim); font-size: 12px; border: none; justify-content: center; }
+
+/* ---- Play timer (fixed, top right) ---- */
+.play-timer {
+  position: fixed; top: 10px; right: 12px; z-index: 80; pointer-events: none;
+  background: rgba(10, 14, 38, 0.82); border: 1px solid #3c4680; border-radius: 999px;
+  padding: 5px 12px; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text);
+}
+.play-timer.cleared { border-color: var(--gold); color: var(--gold); }
+
+/* ---- Battle additions ---- */
+.stat-exp { color: #c9a2f0; }
+.enemy-hp-num { text-align: right; }
+.enemy-hp-unit { font-size: 11px; color: var(--gold); }
+.log-line.hint { color: var(--gold); font-weight: 700; }
+.log-line.boss { color: var(--boss); font-weight: 700; }
+.key-hint { color: var(--text-dim); font-weight: 400; }
+.card { position: relative; }
+.card-key {
+  position: absolute; top: 4px; left: 6px; font-size: 10px; font-weight: 800; color: var(--text-dim);
+  border: 1px solid rgba(152,160,204,0.45); border-radius: 4px; padding: 0 4px; line-height: 14px;
+}
+.enemy-visual.hit img { animation: enemyHit 0.16s ease-out; }
+@keyframes enemyHit {
+  0% { filter: brightness(2.4) saturate(0.3); transform: translateX(4px); }
+  100% { filter: none; transform: none; }
+}
+.enemy-visual.defeated img { animation: enemyDefeat 0.42s ease-in forwards; }
+@keyframes enemyDefeat {
+  0% { filter: brightness(3); transform: scale(1); opacity: 1; }
+  100% { filter: brightness(3) blur(3px); transform: scale(1.15); opacity: 0; }
+}
+
+/* a new 位 (万・億・兆…グーゴル) reached by a single hit: a huge kanji slammed onto the middle of the screen */
+.unit-stamp {
+  position: fixed; left: 50%; top: 42%; z-index: 60; pointer-events: none; text-align: center;
+  transform: translate(-50%, -50%); animation: unitStamp 1.6s ease-out forwards;
+}
+.unit-stamp-name {
+  font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; font-weight: 900; font-size: 150px; line-height: 1;
+  color: #fff3c4; letter-spacing: 4px; white-space: nowrap;
+  text-shadow: 0 0 18px var(--gold), 0 0 42px rgba(224,184,74,0.8), 0 4px 0 #6b4a00;
+}
+.unit-stamp.long .unit-stamp-name { font-size: 92px; }
+.unit-stamp-sub {
+  margin-top: 6px; font-size: 16px; font-weight: 800; color: var(--gold); white-space: nowrap;
+  background: rgba(10,14,38,0.8); border: 1px solid var(--gold); border-radius: 999px; padding: 4px 14px; display: inline-block;
+}
+@keyframes unitStamp {
+  0% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+  12% { transform: translate(-50%, -50%) scale(0.95); opacity: 1; }
+  18% { transform: translate(-50%, -50%) scale(1.04); }
+  24%, 78% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -58%) scale(1); opacity: 0; }
+}
+
+/* ---- Floor clear ---- */
+.levelup-banner {
+  text-align: center; margin: -6px 0 12px; padding: 8px; border-radius: 10px;
+  background: linear-gradient(90deg, rgba(224,184,74,0), rgba(224,184,74,0.18), rgba(224,184,74,0));
+}
+.levelup-main { font-size: 20px; font-weight: 900; color: var(--gold); letter-spacing: 1px; animation: levelPop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.levelup-sub { font-size: 12px; color: var(--text-dim); }
+@keyframes levelPop { 0% { transform: scale(1.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.btn.next-floor-btn { font-size: 18px; margin-top: 0; }
+.option-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.option-card.bought { border-color: var(--good); }
+.option-card.bought .oc-cost { color: var(--good); }
+.btn small { font-size: 11px; opacity: 0.75; font-weight: 600; }
+
+/* ---- Floor select ---- */
+.floor-select-card.locked { opacity: 0.4; cursor: not-allowed; }
+.floor-select-card.sealed-card { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.floor-select-card.sealed-card .fs-hp { color: #c9a2f0; }
+
+/* ---- Tree ---- */
+.tree-header { gap: 10px; }
+.tree-go-btn { width: auto !important; margin: 0 !important; padding: 10px 16px !important; font-size: 14px !important; }
+.tree-screen-title small { font-weight: 400; font-size: 11px; }
+.tree-map-node .tn-cost { white-space: nowrap; }
+.tree-map-svg line.sealed { stroke: var(--seal); stroke-width: 2; stroke-dasharray: 6 6; opacity: 0.8; }
+.tree-map-node.sealed {
+  overflow: hidden; cursor: pointer; border: 2px dashed var(--seal); color: #8f86b3;
+  background: repeating-linear-gradient(135deg, rgba(138,60,194,0.14) 0 6px, rgba(0,0,0,0) 6px 14px), linear-gradient(160deg, #1b1430, #120c22);
+}
+.tree-map-node.sealed .seal-stamp { margin: 0 auto 2px; }
+.tree-map-node.sealed .tn-desc { color: #8f86b3; }
+
+/* ---- Victory ---- */
+.victory-title { font-size: 30px !important; text-shadow: 0 0 18px rgba(74,222,128,0.6); }
+.clear-time { font-size: 34px; font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; text-shadow: 0 0 14px rgba(224,184,74,0.6); }
+.clear-rank { font-size: 15px; font-weight: 800; color: var(--text); min-height: 1.2em; margin: 2px 0 6px; }
+.victory-stats { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+.name-entry { display: flex; gap: 8px; margin-bottom: 6px; }
+.name-entry input {
+  flex: 1; min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid #3c4680;
+  background: var(--panel-2); color: var(--text); font-size: 15px; font-family: inherit;
+}
+.name-entry .btn { width: auto; margin: 0; padding: 12px 16px; font-size: 14px; }
+.teaser-box { margin: 14px 0 6px; padding: 12px; border-radius: 12px; border: 1px solid #4a2a6e; background: rgba(42,26,69,0.35); }
+.teaser-title { color: var(--gold); font-weight: 800; letter-spacing: 3px; font-size: 13px; margin-bottom: 8px; }
+.teaser-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.teaser-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+  font-size: 13px; font-weight: 800; text-align: left; font-family: inherit;
+}
+
+@media (hover: hover) {
+  .sealed-tile:hover, .teaser-row:hover, .btn.sealed-btn:hover, .floor-select-card.sealed-card:hover, .tree-map-node.sealed:hover {
+    border-color: #c9a2f0; color: #c9a2f0;
+  }
+}
+
+@media (max-width: 860px) {
+  .home-columns { flex-direction: column; align-items: stretch; }
+  .home-side { width: 100%; margin-right: 0; }
+  .home-columns .home-banner-buttons { margin-left: 0; width: 100%; }
+}
+@media (max-width: 640px) {
+  .stat-box { padding: 6px 2px; }
+  .stat-value { font-size: 15px; }
+  .unit-stamp-name { font-size: 96px; }
+  .unit-stamp.long .unit-stamp-name { font-size: 56px; }
+  .unit-stamp-sub { font-size: 12px; }
+  .tree-go-btn { padding: 8px 12px !important; font-size: 13px !important; }
+  .teaser-list { grid-template-columns: 1fr; }
+  /* the title runs the full width on a phone, so the timer moves to the bottom corner instead of covering it */
+  .play-timer { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); right: 8px; font-size: 12px; padding: 3px 9px; }
+}

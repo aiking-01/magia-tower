@@ -1,2 +1,4 @@
 # dev-only files that must not be served from the public deployment
 .claude
+# balance simulator for the festival edition: a dev tool, not part of the game
+festival/tools

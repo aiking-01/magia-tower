@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <script>
+    // served as /festival (no trailing slash), every relative path here would resolve against the
+    // site root and load the MAIN game's game.js/style.css instead of this folder's
+    if (location.protocol !== "file:" && !location.pathname.endsWith("/") && !location.pathname.endsWith(".html")) {
+      location.replace(location.pathname + "/" + location.search + location.hash);
+    }
+  </script>
+  <title>マギア・タワー 文化祭体験版</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="app">
+    <h1>マギア・タワー — 文化祭体験版</h1>
+
+    <!-- ============ HOME ============ -->
+    <div class="screen" id="screen-home">
+      <div class="panel home-hero">
+        <div class="home-stats">
+          <span>Lv <b id="homeLevelLabel">1</b></span>
+          <span>最高到達階 <b id="bestFloorLabel">-</b> <small>/ 30</small></span>
+          <span>ソウル <b id="homePointsLabel">0</b></span>
+          <span>最大ダメージ <b id="homeMaxHitLabel">0</b></span>
+        </div>
+        <div class="home-columns">
+          <div class="home-banner-buttons">
+            <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
+            <button class="btn secondary" id="openTreeBtn">基本強化<span class="btn-badge" id="treeBadge">強化できる！</span></button>
+            <div class="sealed-heading">封印された力</div>
+            <div class="sealed-grid" id="homeSealedGrid"></div>
+          </div>
+          <div class="home-side">
+            <div class="ranking-box">
+              <div class="ranking-title">クリアタイム ランキング</div>
+              <ol class="ranking-list" id="homeRanking"></ol>
+            </div>
+          </div>
+        </div>
+        <div class="sub" id="homeSub">30階の頂に座す「塔の支配者」を倒せ。敗北しても、倒した敵の力（ソウル）は持ち帰れる。</div>
+        <button class="reset-progress-btn" id="resetProgressBtn">次の人へ（プレイデータを消去）</button>
+      </div>
+    </div>
+
+    <!-- ============ FLOOR SELECT ============ -->
+    <div class="screen" id="screen-floorSelect">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="floorSelectBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+        </div>
+        <div class="tree-screen-title">挑む階層を選ぶ</div>
+        <div class="reward-sub" style="margin-bottom:14px;">一度たどり着いたチェックポイントからなら、いつでも挑戦できる。</div>
+        <div class="floor-select-grid" id="floorSelectGrid"></div>
+      </div>
+    </div>
+
+    <!-- ============ LEVEL UP TREE (basic) ============ -->
+    <div class="screen" id="screen-tree">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="treeBackBtn" style="width:auto;margin:0;">← タイトルへ戻る</button>
+          <div class="tree-points">所持ソウル <b id="treePointsLabel">0</b></div>
+          <button class="btn primary tree-go-btn" id="treeGoBtn">塔に挑む ▶</button>
+        </div>
+        <div class="tree-screen-title">基本強化 <small>（ドラッグで移動・ホイール／ピンチで拡大縮小）</small></div>
+        <div class="tree-scroll-wrap" id="treeScrollWrap">
+          <div class="tree-map-scaler" id="treeMapScaler">
+            <div class="tree-map-container" id="treeMap"></div>
+          </div>
+        </div>
+        <div class="tree-legend">
+          <span><i style="background:var(--good)"></i>習得済み</span>
+          <span><i style="background:var(--gold)"></i>習得可能</span>
+          <span><i style="background:var(--locked)"></i>未解放</span>
+          <span><i style="background:var(--seal)"></i>封印</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ BATTLE ============ -->
+    <div class="screen" id="screen-battle">
+      <div class="battle-layout">
+        <div class="panel">
+          <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 30</span></div>
+          <div class="enemy-row">
+            <div class="enemy-name" id="enemyName">見張りのモンスター</div>
+            <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span>
+              <div class="enemy-hp-unit" id="enemyHpUnit"></div>
+            </div>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" id="enemyBar" style="width:100%"></div>
+          </div>
+          <div class="enemy-visual" id="enemyVisual"></div>
+        </div>
+        <div class="battle-side" id="battleSide">
+          <div class="panel">
+            <div class="stats-row">
+              <div class="stat-box">
+                <div class="stat-label">残り手数</div>
+                <div class="stat-value" id="statN">5</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">攻撃力</div>
+                <div class="stat-value" id="statAtk">10</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">倍率</div>
+                <div class="stat-value" id="statBuff">×1</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">累乗</div>
+                <div class="stat-value stat-exp" id="statExp">^1</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="log-panel" id="log"></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hand-title"><span>手札 <small class="key-hint">（クリック／数字キーで使う）</small></span><span id="handCount">5枚</span></div>
+        <div class="hand-grid" id="hand"></div>
+        <div class="deck-pile" id="deckPile" title="山札">
+          <div class="deck-pile-card back-3"></div>
+          <div class="deck-pile-card back-2"></div>
+          <div class="deck-pile-card back-1"></div>
+          <div class="deck-pile-label">山札</div>
+          <div class="deck-pile-count" id="deckPileCount">10</div>
+        </div>
+        <div class="deck-info">山札残り: <span id="deckCount">10</span> 枚（使ったカードは山札の下へ戻る） / 所持金 <span id="battleGold">0</span>G</div>
+      </div>
+    </div>
+
+    <!-- ============ FLOOR CLEAR (win, non-final) ============ -->
+    <div class="screen" id="screen-floorClear">
+      <div class="panel narrow">
+        <div class="reward-title win">階層クリア！</div>
+        <div class="reward-sub" id="floorClearSub"></div>
+        <div class="levelup-banner" id="levelUpBanner"></div>
+        <button class="btn primary next-floor-btn" id="toNextFloorBtn">次の階層へ ▶ <small>(Enter)</small></button>
+        <div class="gold-earned">所持金: <b id="shopGold">0</b> G</div>
+        <div class="option-grid" id="shopOptions"></div>
+        <div class="auto-buy-row" id="autoBuyRow">
+          <button class="btn secondary" id="autoBuyBtn">自動購入</button>
+          <label class="auto-buy-toggle"><input type="checkbox" id="autoBuyToggle"> 毎回自動で実行</label>
+        </div>
+        <div class="auto-buy-summary" id="autoBuySummary"></div>
+        <button class="btn secondary" id="rerollBtn">リロール</button>
+        <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>
+      </div>
+    </div>
+
+    <!-- ============ DEFEAT / RETREAT (run over -> spend souls) ============ -->
+    <div class="screen" id="screen-runEnd">
+      <div class="panel narrow" style="text-align:center;">
+        <div class="reward-title" id="runEndTitle"></div>
+        <div class="reward-sub" id="runEndSub"></div>
+        <div class="gold-earned" style="font-size:18px;">ソウル +<b id="runEndPoints">0</b>（所持 <span id="runEndTotal">0</span>）</div>
+        <button class="btn primary" id="runEndTreeBtn">基本強化へ（ソウルで強くなる） <small>(Enter)</small></button>
+        <button class="btn secondary" id="runEndRetryBtn">すぐにもう一度挑む</button>
+        <button class="btn ghost" id="runEndHomeBtn">タイトルへ戻る</button>
+      </div>
+    </div>
+
+    <!-- ============ FINAL VICTORY ============ -->
+    <div class="screen" id="screen-finalVictory">
+      <div class="panel narrow" style="text-align:center;">
+        <div class="reward-title win victory-title">ラスボス討伐！</div>
+        <div class="reward-sub">塔の支配者は崩れ落ちた。……だが、頂のさらに上へ、封じられた階段が続いている。</div>
+        <div class="clear-time" id="clearTimeLabel">00:00</div>
+        <div class="clear-rank" id="clearRankLabel"></div>
+        <div class="victory-stats" id="victoryStats"></div>
+        <div class="name-entry" id="nameEntry">
+          <input type="text" id="nameInput" maxlength="10" placeholder="ニックネーム（10文字まで）" autocomplete="off">
+          <button class="btn primary" id="nameSubmitBtn">ランキングに登録</button>
+        </div>
+        <div class="ranking-box">
+          <div class="ranking-title">クリアタイム ランキング</div>
+          <ol class="ranking-list" id="victoryRanking"></ol>
+        </div>
+        <button class="btn sealed-btn" id="enterEndlessBtn"><span class="seal-stamp">封</span>エンドレスモードへ進む（31階〜）</button>
+        <div class="teaser-box">
+          <div class="teaser-title">― 完全版で待つもの ―</div>
+          <div class="teaser-list" id="victoryTeaser"></div>
+        </div>
+        <button class="btn secondary" id="victoryToHomeBtn">タイトルへ戻る</button>
+      </div>
+    </div>
+
+    <!-- ============ CONFIRM MODAL ============ -->
+    <div class="modal-overlay" id="confirmOverlay">
+      <div class="modal-box">
+        <div class="modal-message" id="confirmMessage"></div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="confirmCancelBtn">キャンセル</button>
+          <button class="btn primary" id="confirmOkBtn">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SEAL MODAL (what a sealed feature is, to build anticipation) ============ -->
+    <div class="modal-overlay" id="sealOverlay">
+      <div class="modal-box seal-box">
+        <div class="seal-box-stamp">封</div>
+        <div class="seal-box-kicker">この力は、まだ封じられている</div>
+        <div class="seal-box-name" id="sealName"></div>
+        <div class="seal-box-text" id="sealText"></div>
+        <div class="seal-box-foot">― 完全版にて解放 ―</div>
+        <button class="btn primary" id="sealCloseBtn">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- notices and the play timer live outside .app so screen shake doesn't move them -->
+  <div class="toast-area" id="toastArea"></div>
+  <div class="play-timer" id="playTimer"></div>
+
+  <script src="../vendor/break_infinity.min.js"></script>
+  <script src="dmg-glyphs.js"></script>
+  <script src="game.js"></script>
+</body>
+
+</html>
