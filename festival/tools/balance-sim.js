@@ -10,9 +10,10 @@ const P = {
   BOSS_EXTRA: { 10: 0.4, 20: 1.5 }, FINAL_HP_LOG: 100,
   BASE_ATK: 10, BASE_N: 5, BASE_HAND: 5, BASE_CRIT: 5,
   LEVEL_ATK_MULT: 1.5, LEVEL_EXP_GROWTH: 3, LEVEL_EXP_BASE: 30,
-  SOUL_PER_FLOOR: 1.3,
+  SOUL_PER_FLOOR: 1.5,
   // 人間のペースの仮定（秒）: カード1枚 / 階クリア画面 / 挑戦の開始と終了 / 強化画面1回 / ノード1つ / 最初の説明
-  T_CARD: 2.5, T_FLOOR: 4, T_RUN: 15, T_TREE: 45, T_NODE: 5, T_INTRO: 60,
+  // T_FLOOR_MANUAL: 商人で自分で秘薬を選ぶときの階クリア画面。AUTO_FROM_RUN 回目の挑戦から「毎回自動で実行」を入れる想定
+  T_CARD: 2.5, T_FLOOR: 4, T_FLOOR_MANUAL: 8, AUTO_FROM_RUN: 2, T_RUN: 15, T_TREE: 45, T_NODE: 5, T_INTRO: 60,
 };
 const card = (name, type, v, cnt, cr, cd) => ({ name, type, v, cnt: cnt || 1, cr: cr || 0, cd: cd || 0 });
 const BASE_DECK = [card("斬撃", "attack", 15, 5), card("強撃", "attack", 20, 3), card("会心撃", "attack", 18, 2, 5, 20)];
@@ -97,7 +98,7 @@ function simulate(seed, verbose, randomPlay) {
         save.expLog = rest > 0 ? need + log10(rest) : -Infinity;
         save.level++;
       }
-      t += P.T_FLOOR; cnt.floors++;
+      t += runs >= P.AUTO_FROM_RUN ? P.T_FLOOR : P.T_FLOOR_MANUAL; cnt.floors++;
       if (floor === P.FINAL) { won = true; break; }
       // 商人（自動購入をざっくり再現: 安いものから買う）
       run.gold += (20 + floor * 5) * (1 + (sum("gold") + run.goldPct) / 100);

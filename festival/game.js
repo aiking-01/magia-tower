@@ -42,7 +42,7 @@
 
   // 敵HP: log10(HP) が「1階ごとに 0.1 × 1.2^(階−1)」ずつ増える。序盤は1階×1.3程度だが、20階台では
   // 1階で×10億を超え、最後は1階で×1E+14。中ボス階は上乗せ（その階だけ）。ラスボスはちょうど1グーゴル。
-  // 数値はバランス用シミュレーター（README参照）で「人間のペースで中央値17分前後・5回目の挑戦でクリア」になるよう調整したもの。
+  // 数値はバランス用シミュレーター（README参照）で「人間のペースで中央値17〜18分・5回目の挑戦でクリア」になるよう調整したもの。
   const HP_LOG_START = Math.log10(60);
   const HP_LOG_STEP = 0.1;
   const HP_LOG_GROWTH = 1.2;
@@ -245,7 +245,7 @@
     return {
       points: 0, unlockedNodes: {}, bestFloor: 0, bestClearedFloor: 0,
       deckDefs: cloneDeckDefs(BASE_DECK_DEFS),
-      autoBuyEnabled: true, // 展示ではテンポ優先で最初からON（商人画面のチェックで切り替え可）
+      autoBuyEnabled: false, // 自動購入ボタンは最初から使える。「毎回自動で実行」は最初は外しておく
       level: 1, exp: new Decimal(0),
       stats: {}, // runs, kills, maxHit (Decimal)
       unitReached: -1, // JP_UNITS の何番目の位まで一撃で届いたか（演出を一度だけ出すため）
@@ -461,6 +461,9 @@
     game.n = BASE_N;
     game.buffBonus = 0;
     game.gameOver = false;
+    // 階の開始直後は少しだけ操作を受け付けない。「塔に挑む」などのダブルクリックの2回目が、
+    // 切り替わった戦闘画面のカードに当たって勝手に使われるのを防ぐ
+    game.inputReadyAt = performance.now() + INPUT_GUARD_MS;
     game.deck = buildShuffledDeck();
     game.hand = [];
     for (let i = 0; i < currentStartHand(); i++) drawOne();
@@ -496,7 +499,7 @@
     deckPileCount: $("deckPileCount"), battleGold: $("battleGold"),
     floorClearSub: $("floorClearSub"), levelUpBanner: $("levelUpBanner"), shopGold: $("shopGold"), shopOptions: $("shopOptions"),
     rerollBtn: $("rerollBtn"), autoBuyRow: $("autoBuyRow"), autoBuyBtn: $("autoBuyBtn"), autoBuyToggle: $("autoBuyToggle"),
-    autoBuySummary: $("autoBuySummary"), toNextFloorBtn: $("toNextFloorBtn"), retreatBtn: $("retreatBtn"),
+    autoBuySummary: $("autoBuySummary"), autoBuyHint: $("autoBuyHint"), toNextFloorBtn: $("toNextFloorBtn"), retreatBtn: $("retreatBtn"),
     runEndTitle: $("runEndTitle"), runEndSub: $("runEndSub"), runEndPoints: $("runEndPoints"), runEndTotal: $("runEndTotal"),
     runEndTreeBtn: $("runEndTreeBtn"), runEndRetryBtn: $("runEndRetryBtn"), runEndHomeBtn: $("runEndHomeBtn"),
     clearTimeLabel: $("clearTimeLabel"), clearRankLabel: $("clearRankLabel"), victoryStats: $("victoryStats"),
@@ -540,6 +543,7 @@
   function closeSeal() { el.sealOverlay.classList.remove("active"); }
   el.sealCloseBtn.addEventListener("click", closeSeal);
   el.sealOverlay.addEventListener("click", (e) => { if (e.target === el.sealOverlay) closeSeal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && el.sealOverlay.classList.contains("active")) closeSeal(); });
   function modalOpen() { return el.sealOverlay.classList.contains("active") || el.confirmOverlay.classList.contains("active"); }
 
   const TOAST_MS = 3500;
@@ -554,7 +558,7 @@
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     $("screen-" + name).classList.add("active");
-    document.body.classList.toggle("home-bg", name === "home");
+    document.body.classList.toggle("title-bg", name === "home");
     window.scrollTo(0, 0);
   }
   function activeScreen() {
@@ -702,8 +706,9 @@
   const CARD_FLIP_DELAY_MS = 180;
   const KILL_PAUSE_MS = 420; // とどめの一撃の数字と撃破演出を見せてから画面を切り替える
 
+  const INPUT_GUARD_MS = 300;
   function playCard(uid) {
-    if (!game || game.gameOver) return;
+    if (!game || game.gameOver || performance.now() < game.inputReadyAt) return;
     const card = game.hand.find((c) => c.uid === uid);
     if (!card || card.playing) return;
     const thisGame = game;
@@ -754,8 +759,8 @@
     }, KILL_PAUSE_MS);
   }
 
-  // ソウル = クリアした階の階数の合計 × 1.3（× 基本強化のソウル獲得）。本編と同じく、高い階ほど多くもらえる
-  const SOUL_PER_FLOOR = 1.3;
+  // ソウル = クリアした階の階数の合計 × 1.5（× 基本強化のソウル獲得）。本編と同じく、高い階ほど多くもらえる
+  const SOUL_PER_FLOOR = 1.5;
   function awardRunEndPoints() {
     const gained = Math.floor(game.floorPointsSum * SOUL_PER_FLOOR * soulMultiplier());
     save.points += gained;
@@ -777,15 +782,26 @@
     el.runEndTitle.textContent = retreated ? `${game.floor}階まで進んで撤退した` : `${game.floor}階で敗北…`;
     el.runEndTitle.className = "reward-title " + (retreated ? "win" : "lose");
     const affordable = NODES.filter((n) => nodeState(n) === "available").length;
-    el.runEndSub.textContent = (retreated ? "無理をせず、ここまでの力を持ち帰った。" : "力尽きたが、倒した敵たちから得た力（ソウル）とレベルは残る。")
-      + (affordable ? `いま習得できる強化が${affordable}個ある！` : "");
+    retryFloor = retryStartFloor(game.startFloor, gained);
+    let sub = retreated ? "無理をせず、ここまでの力を持ち帰った。" : "力尽きたが、倒した敵たちから得た力（ソウル）とレベルは残る。";
+    if (!gained && game.startFloor > 1) sub = "1階もクリアできず、ソウルもレベルも得られなかった。ひとつ前のチェックポイントから登り直して力を蓄えよう。";
+    el.runEndSub.textContent = sub + (affordable ? `いま習得できる強化が${affordable}個ある！` : "");
     el.runEndPoints.textContent = fmt(gained);
     el.runEndTotal.textContent = fmt(save.points);
-    el.runEndRetryBtn.textContent = `すぐにもう一度挑む（${defaultStartFloor()}階から）`;
+    el.runEndRetryBtn.textContent = `すぐにもう一度挑む（${retryFloor}階から）`;
     showScreen("runEnd");
   }
+  // 「すぐにもう一度挑む」の開始階。ラスボス階からは勧めない（何も倒せないとソウルも経験値も入らず、
+  // 同じ所で負け続けて抜け出せなくなる）。開始階で即敗北したときは、ひとつ前のチェックポイントにする
+  let retryFloor = 1;
+  function retryStartFloor(lastStart, gained) {
+    const open = FLOOR_CHECKPOINTS.filter((cp) => cp !== FINAL_FLOOR && checkpointUnlocked(cp));
+    let i = open.length - 1;
+    if (!gained && open[i] >= lastStart && i > 0) i = Math.max(0, open.indexOf(Math.min(open[i], lastStart)) - 1);
+    return open[Math.max(0, i)];
+  }
   el.runEndTreeBtn.addEventListener("click", () => { game = null; openTree(); });
-  el.runEndRetryBtn.addEventListener("click", () => { game = null; newRun(defaultStartFloor()); });
+  el.runEndRetryBtn.addEventListener("click", () => { game = null; newRun(retryFloor); });
   el.runEndHomeBtn.addEventListener("click", () => { game = null; goHome(); });
 
   // ---------------- 商人（フロアクリア） ----------------
@@ -884,6 +900,7 @@
     el.rerollBtn.style.opacity = canReroll ? "1" : "0.5";
     el.autoBuyBtn.textContent = autoBuyRunning ? "自動購入を停止" : "自動購入";
     el.autoBuyToggle.checked = !!save.autoBuyEnabled;
+    el.autoBuyHint.style.display = save.autoBuyEnabled ? "none" : "";
   }
   el.rerollBtn.addEventListener("click", () => { if (!autoBuyRunning && doReroll()) renderShop(); });
 
@@ -926,6 +943,7 @@
     save.autoBuyEnabled = el.autoBuyToggle.checked;
     persistSave();
     if (save.autoBuyEnabled) runAutoBuy();
+    else renderShop();
   });
   function goNextFloor() {
     if (!game || !game.shopOffers) return;
@@ -1157,6 +1175,38 @@
   window.addEventListener("resize", () => { if (activeScreen() === "battle") syncEnemyVisualHeight(); });
 
   // ---------------- タイトル ----------------
+  // 杖のオーブから立ちのぼる光の粒（位置・大きさ・速さをばらしてCSSアニメーションに渡す）と、
+  // 杖をクリックしたときに弾ける光。待っている人が触っても楽しいように
+  const staffEl = $("homeStaff");
+  const staffSparks = $("staffSparks");
+  const rand = (a, b) => a + Math.random() * (b - a);
+  for (let i = 0; i < 16; i++) {
+    const s = document.createElement("i");
+    const t = rand(2.6, 4.8);
+    s.style.setProperty("--s", rand(3, 7).toFixed(1) + "px");
+    s.style.setProperty("--x", rand(-7, 7).toFixed(1) + "vh");
+    s.style.setProperty("--y", rand(-24, -9).toFixed(1) + "vh");
+    s.style.setProperty("--t", t.toFixed(2) + "s");
+    s.style.setProperty("--d", (-rand(0, t)).toFixed(2) + "s");
+    staffSparks.appendChild(s);
+  }
+  staffEl.addEventListener("click", () => {
+    staffEl.classList.remove("flash");
+    void staffEl.offsetWidth;
+    staffEl.classList.add("flash");
+    for (let i = 0; i < 22; i++) {
+      const s = document.createElement("i");
+      const angle = (i / 22) * Math.PI * 2 + rand(-0.15, 0.15);
+      const dist = rand(9, 20);
+      s.className = "burst";
+      s.style.setProperty("--s", rand(4, 9).toFixed(1) + "px");
+      s.style.setProperty("--x", (Math.cos(angle) * dist).toFixed(1) + "vh");
+      s.style.setProperty("--y", (Math.sin(angle) * dist).toFixed(1) + "vh");
+      staffSparks.appendChild(s);
+      setTimeout(() => s.remove(), 950);
+    }
+  });
+
   function goHome() { showScreen("home"); renderHome(); }
   function renderHome() {
     el.homeLevelLabel.textContent = save.level;
@@ -1182,10 +1232,6 @@
     renderTimer();
   }
 
-  function defaultStartFloor() {
-    const open = FLOOR_CHECKPOINTS.filter(checkpointUnlocked);
-    return open[open.length - 1];
-  }
   el.openFloorSelectBtn.addEventListener("click", openTowerEntry);
   el.treeGoBtn.addEventListener("click", openTowerEntry);
   // チェックポイントが1階しかないうちは、選ぶ画面を挟まずにすぐ戦闘へ

@@ -20,30 +20,54 @@
     <h1>マギア・タワー — 文化祭体験版</h1>
 
     <!-- ============ HOME ============ -->
+    <!-- the title is built from layers cut out of assets/title-banner.webp (logo and staff, see
+         festival/assets/), so the logo, the command panel and the staff each get their own space
+         at any window size instead of the panel being laid over one stretched picture -->
     <div class="screen" id="screen-home">
-      <div class="panel home-hero">
-        <div class="home-stats">
-          <span>Lv <b id="homeLevelLabel">1</b></span>
-          <span>最高到達階 <b id="bestFloorLabel">-</b> <small>/ 30</small></span>
-          <span>ソウル <b id="homePointsLabel">0</b></span>
-          <span>最大ダメージ <b id="homeMaxHitLabel">0</b></span>
-        </div>
-        <div class="home-columns">
-          <div class="home-banner-buttons">
-            <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
-            <button class="btn secondary" id="openTreeBtn">基本強化<span class="btn-badge" id="treeBadge">強化できる！</span></button>
-            <div class="sealed-heading">封印された力</div>
-            <div class="sealed-grid" id="homeSealedGrid"></div>
+      <div class="home-stage">
+        <div class="home-main">
+          <div class="home-logo">
+            <img src="assets/title-logo.webp" alt="Magia Tower">
+            <div class="home-edition">マギア・タワー　<span>文化祭体験版</span></div>
           </div>
-          <div class="home-side">
-            <div class="ranking-box">
-              <div class="ranking-title">クリアタイム ランキング</div>
-              <ol class="ranking-list" id="homeRanking"></ol>
+          <div class="home-stats">
+            <span>Lv <b id="homeLevelLabel">1</b></span>
+            <span>最高到達階 <b id="bestFloorLabel">-</b> <small>/ 30</small></span>
+            <span>ソウル <b id="homePointsLabel">0</b></span>
+            <span>最大ダメージ <b id="homeMaxHitLabel">0</b></span>
+          </div>
+          <div class="home-columns">
+            <div class="home-banner-buttons">
+              <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
+              <button class="btn secondary" id="openTreeBtn">基本強化<span class="btn-badge" id="treeBadge">強化できる！</span></button>
+              <div class="sealed-heading">封印された力</div>
+              <div class="sealed-grid" id="homeSealedGrid"></div>
+            </div>
+            <div class="home-side">
+              <div class="ranking-box">
+                <div class="ranking-title">クリアタイム ランキング</div>
+                <ol class="ranking-list" id="homeRanking"></ol>
+              </div>
+              <div class="sub" id="homeSub"></div>
             </div>
           </div>
+          <button class="reset-progress-btn" id="resetProgressBtn">次の人へ（プレイデータを消去）</button>
         </div>
-        <div class="sub" id="homeSub">30階の頂に座す「塔の支配者」を倒せ。敗北しても、倒した敵の力（ソウル）は持ち帰れる。</div>
-        <button class="reset-progress-btn" id="resetProgressBtn">次の人へ（プレイデータを消去）</button>
+        <div class="home-staff" id="homeStaff" title="杖に触れる">
+          <div class="staff-float">
+            <svg class="staff-circle" viewBox="0 0 200 200" aria-hidden="true">
+              <circle cx="100" cy="100" r="92" />
+              <circle cx="100" cy="100" r="84" class="thin" />
+              <circle cx="100" cy="100" r="58" class="dash" />
+              <polygon points="100,18 171,141 29,141" />
+              <polygon points="100,182 29,59 171,59" />
+            </svg>
+            <img class="staff-img" src="assets/title-staff.webp" alt="">
+            <div class="staff-orb"></div>
+            <div class="staff-prism"></div>
+            <div class="staff-sparks" id="staffSparks"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -151,6 +175,7 @@
           <button class="btn secondary" id="autoBuyBtn">自動購入</button>
           <label class="auto-buy-toggle"><input type="checkbox" id="autoBuyToggle"> 毎回自動で実行</label>
         </div>
+        <div class="auto-buy-hint" id="autoBuyHint">「毎回自動で実行」にチェックを入れると、階をクリアするたびに自動で買い物をして、すぐ次の階へ進める。</div>
         <div class="auto-buy-summary" id="autoBuySummary"></div>
         <button class="btn secondary" id="rerollBtn">リロール</button>
         <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>
