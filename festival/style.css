@@ -757,6 +757,7 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 .auto-buy-row .btn { margin: 0; flex: 1; }
 .auto-buy-toggle { font-size: 12px; color: var(--text-dim); white-space: nowrap; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .auto-buy-summary { font-size: 12px; color: var(--gold); min-height: 1em; margin-top: 6px; }
+.auto-buy-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 
 /* ---- Confirm modal (in-page replacement for window.confirm(), see showConfirm() in game.js) ---- */
 .modal-overlay {

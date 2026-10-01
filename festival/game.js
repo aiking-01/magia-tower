@@ -130,9 +130,7 @@
     { label: "商才の芽生え", desc: "獲得金額 +50%", cost: 2, effect: { goldPct: 50 } },
   ]);
   const GOLD_FORK_ROOT = GOLD_TRUNK[GOLD_TRUNK.length - 1].id;
-  // 商人の枝の入口が自動購入。最初の挑戦は自分で秘薬を選んで買い、慣れたら自動にする流れ
   const GOLD_SHOP = buildChain("goldS", "gold", 3, GOLD_FORK_ROOT, [
-    { label: "自動購入開放", desc: "商人で自動購入（全部買う→リロール）が使える", cost: 4, kind: "autoBuy" },
     { label: "商人の信頼", desc: "商人の提案 +1件", cost: 5, effect: { shopSlots: 1 } },
     { label: "開拓者の懐", desc: "開始時の所持金 +100G", cost: 10, effect: { startGold: 100 } },
     { label: "富の帝国", desc: "獲得金額 +100%", cost: 20, effect: { goldPct: 100 } },
@@ -247,7 +245,7 @@
     return {
       points: 0, unlockedNodes: {}, bestFloor: 0, bestClearedFloor: 0,
       deckDefs: cloneDeckDefs(BASE_DECK_DEFS),
-      autoBuyEnabled: false, // 「自動購入開放」を習得した時点でONになる（商人画面のチェックで切り替え可）
+      autoBuyEnabled: false, // 自動購入ボタンは最初から使える。「毎回自動で実行」は最初は外しておく
       level: 1, exp: new Decimal(0),
       stats: {}, // runs, kills, maxHit (Decimal)
       unitReached: -1, // JP_UNITS の何番目の位まで一撃で届いたか（演出を一度だけ出すため）
@@ -501,7 +499,7 @@
     deckPileCount: $("deckPileCount"), battleGold: $("battleGold"),
     floorClearSub: $("floorClearSub"), levelUpBanner: $("levelUpBanner"), shopGold: $("shopGold"), shopOptions: $("shopOptions"),
     rerollBtn: $("rerollBtn"), autoBuyRow: $("autoBuyRow"), autoBuyBtn: $("autoBuyBtn"), autoBuyToggle: $("autoBuyToggle"),
-    autoBuySummary: $("autoBuySummary"), toNextFloorBtn: $("toNextFloorBtn"), retreatBtn: $("retreatBtn"),
+    autoBuySummary: $("autoBuySummary"), autoBuyHint: $("autoBuyHint"), toNextFloorBtn: $("toNextFloorBtn"), retreatBtn: $("retreatBtn"),
     runEndTitle: $("runEndTitle"), runEndSub: $("runEndSub"), runEndPoints: $("runEndPoints"), runEndTotal: $("runEndTotal"),
     runEndTreeBtn: $("runEndTreeBtn"), runEndRetryBtn: $("runEndRetryBtn"), runEndHomeBtn: $("runEndHomeBtn"),
     clearTimeLabel: $("clearTimeLabel"), clearRankLabel: $("clearRankLabel"), victoryStats: $("victoryStats"),
@@ -876,7 +874,7 @@
     el.autoBuySummary.textContent = "";
     renderShop();
     showScreen("floorClear");
-    if (autoBuyUnlocked() && save.autoBuyEnabled) setTimeout(runAutoBuy, AUTO_BUY_STEP_MS);
+    if (save.autoBuyEnabled) setTimeout(runAutoBuy, AUTO_BUY_STEP_MS);
   }
 
   function renderShop() {
@@ -901,8 +899,8 @@
     el.rerollBtn.disabled = !canReroll;
     el.rerollBtn.style.opacity = canReroll ? "1" : "0.5";
     el.autoBuyBtn.textContent = autoBuyRunning ? "自動購入を停止" : "自動購入";
-    el.autoBuyRow.style.display = autoBuyUnlocked() ? "" : "none";
     el.autoBuyToggle.checked = !!save.autoBuyEnabled;
+    el.autoBuyHint.style.display = save.autoBuyEnabled ? "none" : "";
   }
   el.rerollBtn.addEventListener("click", () => { if (!autoBuyRunning && doReroll()) renderShop(); });
 
@@ -910,9 +908,8 @@
   const AUTO_BUY_STEP_MS = 25;
   let autoBuyRunning = false;
   let autoBuyStopRequested = false;
-  function autoBuyUnlocked() { return NODES.some((n) => n.kind === "autoBuy" && save.unlockedNodes[n.id]); }
   async function runAutoBuy() {
-    if (autoBuyRunning || !game || !game.shopOffers || !autoBuyUnlocked()) return;
+    if (autoBuyRunning || !game || !game.shopOffers) return;
     const thisGame = game;
     const stillHere = () => game === thisGame && game.shopOffers && activeScreen() === "floorClear";
     autoBuyRunning = true;
@@ -946,6 +943,7 @@
     save.autoBuyEnabled = el.autoBuyToggle.checked;
     persistSave();
     if (save.autoBuyEnabled) runAutoBuy();
+    else renderShop();
   });
   function goNextFloor() {
     if (!game || !game.shopOffers) return;
@@ -1330,11 +1328,6 @@
           save.unlockedNodes[node.id] = true;
           if (node.kind === "startCards") node.cards.forEach((c) => addCardToDeckDefs(save.deckDefs, c));
           else if (node.kind === "grantPoints") save.points += node.pointsGrant;
-          else if (node.kind === "autoBuy") {
-            // 買った＝自動にしたい、なので最初からONにしておく（商人画面のチェックでいつでもOFFにできる）
-            save.autoBuyEnabled = true;
-            showToast("自動購入が使えるようになった！ 階をクリアすると商人で自動で買い物をする（商人画面でON/OFF）");
-          }
           persistSave();
           renderTree();
         });
