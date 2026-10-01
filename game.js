@@ -250,13 +250,15 @@
   // With `center` (a point in posMap), the canvas is laid out symmetrically around it, so that node
   // (the tree's 起点, the panel's 核) is the exact middle of the map: centred at every zoom level,
   // and still in the middle when the whole map fits on screen.
-  function fitCanvasToPositions(posMap, edgePad, center) {
+  // `minHalf` widens the canvas to at least that far from the centre in every direction (the magic
+  // circle drawn behind the nodes reaches further out than the outermost node).
+  function fitCanvasToPositions(posMap, edgePad, center, minHalf) {
     const pts = Object.values(posMap);
     if (center) {
       const cx = center.x;
       const cy = center.y;
-      const halfW = Math.max(...pts.map((p) => Math.abs(p.x - cx))) + edgePad;
-      const halfH = Math.max(...pts.map((p) => Math.abs(p.y - cy))) + edgePad;
+      const halfW = Math.max(minHalf || 0, Math.max(...pts.map((p) => Math.abs(p.x - cx))) + edgePad);
+      const halfH = Math.max(minHalf || 0, Math.max(...pts.map((p) => Math.abs(p.y - cy))) + edgePad);
       pts.forEach((p) => { p.x = p.x - cx + halfW; p.y = p.y - cy + halfH; });
       return { width: halfW * 2, height: halfH * 2 };
     }
@@ -270,7 +272,20 @@
     return { width: maxX - minX, height: maxY - minY };
   }
   const TREE_EDGE_PAD = 90; // half a node's footprint (card is 84px wide, plus its text/border) so nothing clips
-  const { width: TREE_CANVAS_WIDTH, height: TREE_CANVAS_HEIGHT } = fitCanvasToPositions(TREE_POS, TREE_EDGE_PAD, TREE_POS.root);
+  // how far the backdrop reaches past its last ring: the outer band (+80, see drawMagicBackdrop), the
+  // golden aura once complete (+60) and a little air
+  const MAGIC_CIRCLE_REACH = 80 + 60 + 20;
+  // the tree's magic-circle rings (150, 300, then every 140 out past the farthest node)
+  function treeMagicRings() {
+    const root = TREE_POS.root;
+    const maxR = Math.max(...Object.values(TREE_POS).map((q) => Math.hypot(q.x - root.x, q.y - root.y)));
+    const rings = [150, 300];
+    for (let r = 440; r < maxR + 60; r += 140) rings.push(r);
+    return rings;
+  }
+  const TREE_RINGS = treeMagicRings();
+  const { width: TREE_CANVAS_WIDTH, height: TREE_CANVAS_HEIGHT } =
+    fitCanvasToPositions(TREE_POS, TREE_EDGE_PAD, TREE_POS.root, TREE_RINGS[TREE_RINGS.length - 1] + MAGIC_CIRCLE_REACH);
 
   function defaultSave() {
     return {
@@ -657,7 +672,8 @@
   Object.assign(PANEL_POS, foldedArm(PANEL_SPECIALS.map((sp) => sp.id), panelSpokeAngle(7)));
 
   const PANEL_EDGE_PAD = 90;
-  const { width: PANEL_CANVAS_WIDTH, height: PANEL_CANVAS_HEIGHT } = fitCanvasToPositions(PANEL_POS, PANEL_EDGE_PAD, PANEL_POS.core);
+  const { width: PANEL_CANVAS_WIDTH, height: PANEL_CANVAS_HEIGHT } =
+    fitCanvasToPositions(PANEL_POS, PANEL_EDGE_PAD, PANEL_POS.core, PANEL_ROW_START + PANEL_ROW_STEP * (panelRowCount - 1) + MAGIC_CIRCLE_REACH);
 
   // HP, damage, multipliers and exp are break_infinity Decimals (window.Decimal, vendor/), so they go on
   // past 1.8e308 instead of overflowing to Infinity. Below this, plain doubles are exact enough that the
@@ -1386,6 +1402,8 @@
     trialBackBtn: document.getElementById("trialBackBtn"),
     trialSkipBtn: document.getElementById("trialSkipBtn"),
     menuDescTitle: document.getElementById("menuDescTitle"),
+    treeBulkBtn: document.getElementById("treeBulkBtn"),
+    panelBulkBtn: document.getElementById("panelBulkBtn"),
     menuDescText: document.getElementById("menuDescText"),
     trialStartBtn: document.getElementById("trialStartBtn"),
     trialSelection: document.getElementById("trialSelection"),
@@ -2783,6 +2801,8 @@
   // pannable map, which is easy to lose track of once you scroll away from it
   el.panelBackBtn.addEventListener("click", leavePanel);
   el.openPanelPreviewBtn.addEventListener("click", () => openPanel(true));
+  el.treeBulkBtn.addEventListener("click", bulkBuyTree);
+  el.panelBulkBtn.addEventListener("click", bulkBuyPanel);
   // reincarnateNow() wipes real progress the instant it runs and persists it, so this gets the same
   // confirm the reset button has. The numbers are spelled out because the title screen only shows
   // the transcend points, not what is about to be given up.
@@ -2831,6 +2851,58 @@
     renderPanel();
     centerPanelOnCore();
   }
+  function panelProgress() {
+    const all = PANEL_CATEGORIES.concat(PANEL_CHAINS);
+    const total = all.reduce((n, c) => n + c.maxLevel, 0) + PANEL_SPECIALS.length;
+    const owned = all.reduce((n, c) => n + Math.min(c.maxLevel, panelLevel(c)), 0) + PANEL_SPECIALS.filter(panelSpecialOwned).length;
+    return owned / total;
+  }
+  // a purchase is { chain, tier, cost } (a category or an unlock chain) or { special, cost }
+  function applyPanelPurchase(buy) {
+    save.transcendPoints -= buy.cost;
+    if (buy.special) {
+      save.panelSpecials[buy.special.id] = true;
+      return;
+    }
+    save.panelLevels[buy.chain.id] = buy.tier;
+    if (buy.chain === PANEL_REMNANT_CHAIN) ensureRemnantDecks();
+  }
+  function buyPanelOne(buy) {
+    const before = panelProgress();
+    applyPanelPurchase(buy);
+    checkAchievements();
+    persistSave();
+    renderPanel();
+    celebrateIfCompleted(before, panelProgress(), "転生パネル");
+  }
+  function affordablePanelPurchases() {
+    const out = [];
+    PANEL_CATEGORIES.concat(PANEL_CHAINS).forEach((c) => {
+      const tier = panelLevel(c) + 1;
+      if (tier <= c.maxLevel && panelChainNodeState(c, tier) === "available") out.push({ chain: c, tier, cost: panelTierCost(c, tier) });
+    });
+    PANEL_SPECIALS.forEach((sp) => { if (panelSpecialState(sp) === "available") out.push({ special: sp, cost: sp.cost }); });
+    return out;
+  }
+  function bulkBuyPanel() {
+    if (panelViewOnly) return;
+    const before = panelProgress();
+    let count = 0;
+    let spent = 0;
+    for (;;) {
+      const buy = affordablePanelPurchases().sort((a, b) => a.cost - b.cost)[0];
+      if (!buy) break;
+      spent += buy.cost;
+      applyPanelPurchase(buy);
+      count += 1;
+    }
+    if (!count) { showToast("いま買える転生パネルの強化はない"); return; }
+    checkAchievements();
+    persistSave();
+    renderPanel();
+    showToast(`一括購入：転生パネルを${count}段強化した（転生ポイント -${fmt(spent)}）`);
+    celebrateIfCompleted(before, panelProgress(), "転生パネル");
+  }
   function panelHasAnythingToBuy() {
     return PANEL_CATEGORIES.some((c) => panelLevel(c) < c.maxLevel)
       || PANEL_CHAINS.some((c) => panelLevel(c) < c.maxLevel)
@@ -2838,6 +2910,7 @@
   }
 
   function renderPanel() {
+    el.panelBulkBtn.style.display = panelViewOnly ? "none" : "";
     el.panelPointsLabel.textContent = fmt(save.transcendPoints)
       + (panelViewOnly ? `（転生すると +${fmt(transcendGainForLevel(save.level))}）` : "");
     el.panelSub.textContent = panelViewOnly
@@ -2888,7 +2961,7 @@
     // magic-circle backdrop behind everything: a ring per row, the outer rune band, the stars, and the
     // 12 slice borders
     const core = PANEL_POS.core;
-    drawMagicBackdrop(svg, core.x, core.y, Array.from({ length: panelRowCount }, (_, row) => PANEL_ROW_START + PANEL_ROW_STEP * row), "panel");
+    drawMagicBackdrop(svg, core.x, core.y, Array.from({ length: panelRowCount }, (_, row) => PANEL_ROW_START + PANEL_ROW_STEP * row), "panel", panelProgress());
     const deco = document.createElementNS(svgNS, "g");
     deco.setAttribute("class", "panel-circle");
     const outer = PANEL_ROW_START + PANEL_ROW_STEP * (panelRowCount - 0.5);
@@ -2926,10 +2999,7 @@
         if (state === "available" && !panelViewOnly) {
           div.addEventListener("click", () => {
             if (panelChainNodeState(cat, tier) !== "available") return;
-            save.transcendPoints -= panelTierCost(cat, tier);
-            save.panelLevels[cat.id] = tier;
-            persistSave();
-            renderPanel();
+            buyPanelOne({ chain: cat, tier, cost: panelTierCost(cat, tier) });
           });
         }
         el.panelMap.appendChild(div);
@@ -2948,10 +3018,7 @@
       if (state === "available" && !panelViewOnly) {
         div.addEventListener("click", () => {
           if (panelSpecialState(special) !== "available") return;
-          save.transcendPoints -= special.cost;
-          save.panelSpecials[special.id] = true;
-          persistSave();
-          renderPanel();
+          buyPanelOne({ special, cost: special.cost });
         });
       }
       el.panelMap.appendChild(div);
@@ -2970,14 +3037,7 @@
       if (state === "available" && !panelViewOnly) {
         div.addEventListener("click", () => {
           if (panelChainNodeState(chain, tier) !== "available") return;
-          save.transcendPoints -= panelTierCost(chain, tier);
-          save.panelLevels[chain.id] = tier;
-          if (chain === PANEL_REMNANT_CHAIN) {
-            ensureRemnantDecks();
-            checkAchievements();
-          }
-          persistSave();
-          renderPanel();
+          buyPanelOne({ chain, tier, cost: panelTierCost(chain, tier) });
         });
       }
       el.panelMap.appendChild(div);
@@ -3144,8 +3204,16 @@
 
   // clamp, store and re-render at the requested zoom; returns the zoom actually applied so the
   // caller can re-anchor its scroll against it. Shared by the wheel and pinch handlers.
+  // the zoom at which the whole canvas fits inside the scroll frame (minus its padding)
+  function fitZoom(wrap, width, height) {
+    const w = wrap.clientWidth - 32;
+    const h = wrap.clientHeight - 8;
+    if (w <= 0 || h <= 0) return 1;
+    return Math.min(w / width, h / height) * 0.98;
+  }
   function setTreeZoom(z) {
-    treeZoom = Math.min(TREE_ZOOM_MAX, Math.max(TREE_ZOOM_MIN, z));
+    const min = Math.min(TREE_ZOOM_MIN, fitZoom(el.treeScrollWrap, TREE_CANVAS_WIDTH, TREE_CANVAS_HEIGHT));
+    treeZoom = Math.min(TREE_ZOOM_MAX, Math.max(min, z));
     applyTreeZoom();
     return treeZoom;
   }
@@ -3196,7 +3264,8 @@
   }
 
   function setPanelZoom(z) {
-    panelZoom = Math.min(PANEL_ZOOM_MAX, Math.max(PANEL_ZOOM_MIN, z));
+    const min = Math.min(PANEL_ZOOM_MIN, fitZoom(el.panelScrollWrap, PANEL_CANVAS_WIDTH, PANEL_CANVAS_HEIGHT));
+    panelZoom = Math.min(PANEL_ZOOM_MAX, Math.max(min, z));
     applyPanelZoom();
     return panelZoom;
   }
@@ -3231,32 +3300,65 @@
   // dotted), a slowly turning outer band of ticks and rune text, and a counter-turning hexagram + octagram.
   // Purely decorative; the nodes keep their positions.
   const MC_RUNES = "✦ MAGIA ✦ ARCANUM ✦ AETERNUM ✦ TURRIS ✦ STELLA ✦ LUMEN ✦ POTENTIA ✦ INFINITAS ";
-  function drawMagicBackdrop(svg, cx, cy, rings, idSuffix) {
+  // `progress` (0…1, the share of nodes bought) completes the circle: each ring is drawn in as a glowing arc
+  // one after another, the outer band's ticks light up in turn, the stars are traced out and the runes
+  // brighten. At 1 the whole circle turns gold and shines.
+  function drawMagicBackdrop(svg, cx, cy, rings, idSuffix, progress) {
     const svgNS = "http://www.w3.org/2000/svg";
+    const f = Math.max(0, Math.min(1, progress || 0));
+    const complete = f >= 1;
     const mk = (tag, attrs) => {
       const n = document.createElementNS(svgNS, tag);
       Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
       return n;
     };
-    const g = mk("g", { class: "mc-backdrop" });
-    rings.forEach((r, i) => g.appendChild(mk("circle", { cx, cy, r, class: i % 2 ? "dash" : "" })));
+    // a copy of a shape traced from its start up to `share` of its length
+    const traced = (tag, attrs, share, cls) => mk(tag, Object.assign({}, attrs, {
+      class: cls, pathLength: 1, "stroke-dasharray": "1 1", "stroke-dashoffset": (1 - Math.max(0, Math.min(1, share))).toFixed(4),
+    }));
+    const g = mk("g", { class: "mc-backdrop" + (complete ? " complete" : "") });
     const outer = rings[rings.length - 1] + 80;
+    if (complete) {
+      const gradId = "mcAura-" + idSuffix;
+      const defs = mk("defs", {});
+      const grad = mk("radialGradient", { id: gradId });
+      grad.appendChild(mk("stop", { offset: "0%", "stop-color": "rgba(255, 226, 150, 0.32)" }));
+      grad.appendChild(mk("stop", { offset: "55%", "stop-color": "rgba(170, 150, 255, 0.12)" }));
+      grad.appendChild(mk("stop", { offset: "100%", "stop-color": "rgba(0, 0, 0, 0)" }));
+      defs.appendChild(grad);
+      g.appendChild(defs);
+      g.appendChild(mk("circle", { cx, cy, r: outer + 60, class: "mc-aura", fill: `url(#${gradId})` }));
+    }
+    const lit = mk("g", { class: "mc-lit" });
+    rings.forEach((r, i) => {
+      g.appendChild(mk("circle", { cx, cy, r, class: i % 2 ? "dash" : "" }));
+      const share = f * rings.length - i;
+      if (share > 0) lit.appendChild(traced("circle", { cx, cy, r, transform: `rotate(-90 ${cx} ${cy})` }, share, "lit-ring"));
+    });
     const rotor = mk("g", { class: "mc-rotor", style: `transform-origin: ${cx}px ${cy}px` });
     rotor.appendChild(mk("circle", { cx, cy, r: outer }));
     rotor.appendChild(mk("circle", { cx, cy, r: outer - 44, class: "thin" }));
-    for (let a = 0; a < 360; a += 4) {
+    const tickLit = mk("g", { class: "mc-lit" });
+    const tickCount = 90;
+    const litTicks = Math.round(f * tickCount);
+    for (let i = 0; i < tickCount; i++) {
+      const a = i * 4 - 90;
       const rad = (a * Math.PI) / 180;
-      const r1 = outer - (a % 20 === 0 ? 16 : 8);
-      rotor.appendChild(mk("line", { class: "tick", x1: cx + Math.cos(rad) * outer, y1: cy + Math.sin(rad) * outer, x2: cx + Math.cos(rad) * r1, y2: cy + Math.sin(rad) * r1 }));
+      const r1 = outer - (i % 5 === 0 ? 16 : 8);
+      const attrs = { x1: cx + Math.cos(rad) * outer, y1: cy + Math.sin(rad) * outer, x2: cx + Math.cos(rad) * r1, y2: cy + Math.sin(rad) * r1 };
+      (i < litTicks ? tickLit : rotor).appendChild(mk("line", Object.assign({ class: i < litTicks ? "tick lit" : "tick" }, attrs)));
     }
+    rotor.appendChild(tickLit);
+    if (complete) rotor.appendChild(traced("circle", { cx, cy, r: outer, transform: `rotate(-90 ${cx} ${cy})` }, 1, "lit-ring"));
     const runeR = outer - 30;
     const pathId = "mcRune-" + idSuffix;
     rotor.appendChild(mk("path", { id: pathId, d: `M ${cx - runeR},${cy} a ${runeR},${runeR} 0 1,1 ${runeR * 2},0 a ${runeR},${runeR} 0 1,1 ${-runeR * 2},0`, fill: "none" }));
-    const text = mk("text", { class: "rune" });
+    const text = mk("text", { class: "rune", style: `fill-opacity: ${(0.35 + 0.65 * f).toFixed(2)}` });
     const tp = mk("textPath", { href: "#" + pathId });
     tp.textContent = MC_RUNES.repeat(Math.max(1, Math.ceil((2 * Math.PI * runeR) / (MC_RUNES.length * 15))));
     text.appendChild(tp);
     rotor.appendChild(text);
+    g.appendChild(lit);
     g.appendChild(rotor);
     const star = mk("g", { class: "mc-rotor rev", style: `transform-origin: ${cx}px ${cy}px` });
     const starR = rings[Math.min(1, rings.length - 1)];
@@ -3264,9 +3366,16 @@
       const t = rot + (i * step * 2 * Math.PI) / n;
       return `${cx + Math.cos(t) * r},${cy + Math.sin(t) * r}`;
     }).join(" ");
-    star.appendChild(mk("polygon", { points: pts(3, 1, starR, -Math.PI / 2) }));
-    star.appendChild(mk("polygon", { points: pts(3, 1, starR, Math.PI / 2) }));
-    star.appendChild(mk("polygon", { class: "thin", points: pts(8, 3, rings[rings.length - 1], 0) }));
+    const shapes = [
+      [{ points: pts(3, 1, starR, -Math.PI / 2) }, ""],
+      [{ points: pts(3, 1, starR, Math.PI / 2) }, ""],
+      [{ points: pts(8, 3, rings[rings.length - 1], 0) }, "thin"],
+    ];
+    shapes.forEach(([attrs, cls], i) => {
+      star.appendChild(mk("polygon", Object.assign({ class: cls }, attrs)));
+      const share = f * shapes.length - i;
+      if (share > 0) star.appendChild(traced("polygon", attrs, share, "lit-star"));
+    });
     g.appendChild(star);
     svg.insertBefore(g, svg.firstChild);
   }
@@ -3294,10 +3403,7 @@
     const rootPos = TREE_POS.root;
     const revealDelay = (pos) => (Math.hypot(pos.x - rootPos.x, pos.y - rootPos.y) / 1500 + 0.35).toFixed(2) + "s";
     if (opened) {
-      const maxR = Math.max(...Object.values(TREE_POS).map((q) => Math.hypot(q.x - rootPos.x, q.y - rootPos.y)));
-      const rings = [150, 300];
-      for (let r = 440; r < maxR + 60; r += 140) rings.push(r);
-      drawMagicBackdrop(svg, rootPos.x, rootPos.y, rings, "tree");
+      drawMagicBackdrop(svg, rootPos.x, rootPos.y, TREE_RINGS, "tree", treeProgress());
     }
     NODES.forEach((node) => {
       const fromId = node.requires || "root";
@@ -3338,31 +3444,74 @@
       }
       if (state === "available") {
         div.addEventListener("click", () => {
-          save.points -= node.cost;
-          save.unlockedNodes[node.id] = true;
-          if (isRoot) {
-            treeRevealPending = true;
-            playRootBurst(pos);
-          }
-          // startCards nodes grant their cards to the permanent deck once, right here at
-          // purchase time (not re-applied every run), so they're real deck members that can
-          // later be ranked up / deleted from the title-screen deck upgrade screen too.
-          if (node.kind === "startCards") {
-            node.cards.forEach((c) => addCardToDeckDefs(save.deckDefs, c));
-          } else if (node.kind === "grantPoints") {
-            save.points += node.pointsGrant;
-          } else if (node.kind === "autoBuy") {
-            save.autoBuyEnabled = true;
-          }
+          if (nodeState(node) !== "available") return;
+          const before = treeProgress();
+          buyTreeNode(node);
           persistSave();
           renderTree();
+          celebrateIfCompleted(before, treeProgress(), "基本強化");
         });
       }
       el.treeMap.appendChild(div);
     });
+    if (reveal) spawnRootRings(rootPos);
+  }
+  function treeProgress() { return NODES.filter((n) => save.unlockedNodes[n.id]).length / NODES.length; }
+  function buyTreeNode(node) {
+    save.points -= node.cost;
+    save.unlockedNodes[node.id] = true;
+    if (node.id === "root") {
+      treeRevealPending = true;
+      playRootBurst();
+    }
+    // startCards nodes grant their cards to the permanent deck once, right here at
+    // purchase time (not re-applied every run), so they're real deck members that can
+    // later be ranked up / deleted from the title-screen deck upgrade screen too.
+    if (node.kind === "startCards") {
+      node.cards.forEach((c) => addCardToDeckDefs(save.deckDefs, c));
+    } else if (node.kind === "grantPoints") {
+      save.points += node.pointsGrant;
+    } else if (node.kind === "autoBuy") {
+      save.autoBuyEnabled = true;
+    }
+  }
+  // 一括購入: keep buying the cheapest node that's affordable right now until nothing more is
+  // (newly opened neighbours join in as their prerequisite gets bought)
+  function bulkBuyTree() {
+    const before = treeProgress();
+    let count = 0;
+    let spent = 0;
+    for (;;) {
+      const node = NODES.filter((n) => nodeState(n) === "available").sort((a, b) => a.cost - b.cost)[0];
+      if (!node) break;
+      spent += node.cost;
+      buyTreeNode(node);
+      count += 1;
+    }
+    if (!count) { showToast("いま習得できる基本強化はない"); return; }
+    persistSave();
+    renderTree();
+    showToast(`一括購入：${count}個の基本強化を習得した（ソウル -${fmt(spent)}）`);
+    celebrateIfCompleted(before, treeProgress(), "基本強化");
+  }
+  // the moment the last node is bought, the circle flashes and says so
+  function celebrateIfCompleted(before, after, label) {
+    if (before >= 1 || after < 1) return;
+    const flash = document.createElement("div");
+    flash.className = "screen-flash flash-crit";
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 450);
+    showToast(`${label}の魔法陣が完成した！`);
   }
   // 起点 awakening: a flash and light rings racing outward, while the tree draws itself in behind them
-  function playRootBurst(pos) {
+  function playRootBurst() {
+    const flash = document.createElement("div");
+    flash.className = "screen-flash flash-huge";
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 450);
+  }
+  // spawned after the redraw that reveals the tree (rendering clears the map, so they can't be added earlier)
+  function spawnRootRings(pos) {
     for (let i = 0; i < 3; i++) {
       const ring = document.createElement("div");
       ring.className = "root-burst";
@@ -3372,10 +3521,6 @@
       el.treeMap.appendChild(ring);
       setTimeout(() => ring.remove(), 1800);
     }
-    const flash = document.createElement("div");
-    flash.className = "screen-flash flash-huge";
-    document.body.appendChild(flash);
-    setTimeout(() => flash.remove(), 450);
   }
 
   // ---------------- Title: the staff ----------------

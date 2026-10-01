@@ -1523,3 +1523,24 @@ body.title-bg h1 { display: none; } /* the logo is the title here */
 }
 #screen-tree > .panel, #screen-panel > .panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
 #screen-tree .tree-scroll-wrap, #screen-panel .panel-map-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
+
+/* =====================================================================
+   買うほど完成していく魔法陣。全部買うと金色に光り輝く
+   ===================================================================== */
+.tree-map-svg .mc-backdrop .lit-ring { fill: none; stroke: rgba(150, 205, 255, 0.85); stroke-width: 4; }
+.tree-map-svg .mc-backdrop .lit-star { fill: none; stroke: rgba(255, 214, 120, 0.8); stroke-width: 3; }
+.tree-map-svg .mc-backdrop line.tick.lit { stroke: rgba(180, 220, 255, 0.95); stroke-width: 3; }
+.tree-map-svg .mc-backdrop .mc-lit { filter: drop-shadow(0 0 6px rgba(120, 180, 255, 0.95)); }
+.tree-map-svg .mc-backdrop.complete .lit-ring,
+.tree-map-svg .mc-backdrop.complete .lit-star,
+.tree-map-svg .mc-backdrop.complete line.tick { stroke: #ffe9a8; }
+.tree-map-svg .mc-backdrop.complete .mc-lit,
+.tree-map-svg .mc-backdrop.complete .mc-rotor { filter: drop-shadow(0 0 8px rgba(255, 214, 120, 0.95)) drop-shadow(0 0 20px rgba(255, 190, 110, 0.6)); }
+.tree-map-svg .mc-backdrop.complete text.rune { fill: #fff3c4; }
+.tree-map-svg .mc-backdrop .mc-aura { animation: auraBreath 5s ease-in-out infinite alternate; }
+@keyframes auraBreath { from { opacity: 0.65; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tree-map-svg .mc-backdrop .mc-aura { animation: none; } }
+
+/* 一括購入 */
+.tree-header { gap: 10px; }
+.tree-header .bulk-btn { width: auto; margin: 0 0 0 auto; padding: 8px 14px; font-size: 13px; }
