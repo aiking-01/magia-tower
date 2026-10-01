@@ -1071,8 +1071,8 @@
     el.enemyName.classList.toggle("boss", enemy.isBoss);
     el.enemyBar.classList.toggle("boss", enemy.isBoss);
     el.enemyVisual.classList.toggle("boss", enemy.isBoss);
-    el.enemyVisual.classList.toggle("has-backdrop", !enemy.isBoss);
-    el.enemyVisual.classList.toggle("boss-bg", enemy.isBoss);
+    // every floor (bosses included, now that their art is transparent too) shows the dungeon backdrop
+    el.enemyVisual.classList.add("has-backdrop");
     if (el.enemyVisual.dataset.art !== enemy.art) {
       el.enemyVisual.dataset.art = enemy.art;
       el.enemyVisual.innerHTML = "";

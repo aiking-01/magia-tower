@@ -30,6 +30,10 @@
           <button class="btn secondary" id="openPanelPreviewBtn" style="display:none;">転生パネルを見る</button>
           <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
         </div>
+        <div class="trial-banner" id="trialBanner" style="display:none;">
+          <span id="trialBannerText"></span>
+          <button class="btn ghost" id="abandonTrialBtn">苦難を放棄</button>
+        </div>
         <div class="idle-report" id="idleReport"></div>
         <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
         <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
@@ -120,7 +124,7 @@
           <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 100</span></div>
           <div class="enemy-row">
             <div class="enemy-name" id="enemyName">見張りのモンスター</div>
-            <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span></div>
+            <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span><span class="enemy-hp-unit" id="enemyHpUnit"></span></div>
           </div>
           <div class="bar-track">
             <div class="bar-fill" id="enemyBar" style="width:100%"></div>
@@ -175,6 +179,7 @@
       <div class="panel narrow">
         <div class="reward-title win">階層クリア！</div>
         <div class="reward-sub" id="floorClearSub">次の階層へ進む前に、商人から強化を購入できる</div>
+        <div class="levelup-banner" id="levelUpBanner" style="display:none;"></div>
         <div class="gold-earned">所持金: <b id="shopGold">0</b> G</div>
         <div class="option-grid" id="shopOptions"></div>
         <div class="auto-buy-row" id="autoBuyRow" style="display:none;">
@@ -183,7 +188,7 @@
         </div>
         <div class="auto-buy-summary" id="autoBuySummary"></div>
         <button class="btn secondary" id="rerollBtn">リロール</button>
-        <button class="btn primary" id="toNextFloorBtn">次の階層へ</button>
+        <button class="btn primary next-floor-btn" id="toNextFloorBtn">次の階層へ <span class="key-hint">[Enter]</span></button>
         <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>
       </div>
     </div>
@@ -194,7 +199,10 @@
         <div class="reward-title lose"><span id="defeatFloor">1</span>階で敗北…</div>
         <div class="reward-sub">力尽きたが、倒した敵たちから得た力は残る。</div>
         <div class="gold-earned" style="font-size:18px;">ソウル +<b id="defeatPoints">0</b></div>
-        <button class="btn primary" id="defeatToHomeBtn">タイトルへ戻る</button>
+        <div class="reward-sub run-end-hint" id="defeatHint"></div>
+        <button class="btn primary" id="defeatRetryBtn">すぐにもう一度挑む</button>
+        <button class="btn secondary" id="defeatTreeBtn">基本強化へ</button>
+        <button class="btn ghost" id="defeatToHomeBtn">タイトルへ戻る</button>
       </div>
     </div>
 
@@ -204,7 +212,10 @@
         <div class="reward-title win"><span id="retreatFloor">1</span>階まで進んで撤退した</div>
         <div class="reward-sub">無理をせず、ここまでの力を持ち帰った。</div>
         <div class="gold-earned" style="font-size:18px;">ソウル +<b id="retreatPoints">0</b></div>
-        <button class="btn primary" id="retreatToHomeBtn">タイトルへ戻る</button>
+        <div class="reward-sub run-end-hint" id="retreatHint"></div>
+        <button class="btn primary" id="retreatRetryBtn">すぐにもう一度挑む</button>
+        <button class="btn secondary" id="retreatTreeBtn">基本強化へ</button>
+        <button class="btn ghost" id="retreatToHomeBtn">タイトルへ戻る</button>
       </div>
     </div>
 
@@ -214,6 +225,7 @@
         <div class="reward-title win" style="font-size:28px;">ラスボス討伐！</div>
         <div class="reward-sub">塔の頂上に到達したが、扉の向こうにはまだ道が続いている。さらに深く進むか、ここで現世へ帰るか。</div>
         <div class="gold-earned" style="font-size:20px;">ソウル +<b id="victoryPoints">0</b></div>
+        <div class="trial-clear-note" id="trialClearNote"></div>
         <button class="btn primary" id="enterEndlessBtn">エンドレスモードへ進む（101階〜）</button>
         <button class="btn secondary" id="victoryToHomeBtn">タイトルへ戻る</button>
       </div>
@@ -233,6 +245,20 @@
             <div class="tree-map-container panel-map-container" id="panelMap"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ============ 苦難 (shown between the reincarnation panel and the next loop) ============ -->
+    <div class="screen" id="screen-trial">
+      <div class="panel">
+        <div class="tree-header">
+          <button class="btn ghost" id="trialBackBtn" style="width:auto;margin:0;">← 転生パネルへ</button>
+          <div class="tree-points">乗り越えた苦難 <b id="trialClearedLabel">0</b></div>
+        </div>
+        <div class="tree-screen-title">苦難</div>
+        <div class="deck-zone-sub">次の周回で挑む苦難を選べる。苦難はこの周回の間ずっと続き、挑戦中は転生パネルの効果（残滓・カードショップ・拡張強化を含む）が封印される。苦難に挑んだままラスボスを倒すと、難易度に応じた永続的な超強化を得る（それぞれ初回のみ）。苦難は8つの方向それぞれに★〜★★★の3段階があり、上の段階は同じ方向の1つ下を越えると挑める。</div>
+        <div class="trial-list" id="trialList"></div>
+        <button class="btn secondary" id="trialSkipBtn">苦難に挑まずに次の周回へ</button>
       </div>
     </div>
 

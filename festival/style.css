@@ -169,13 +169,15 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
   display: flex; align-items: center; justify-content: center;
 }
 .enemy-visual.boss { border-color: var(--boss); }
-/* regular (non-boss) floors show the dungeon backdrop behind the now-transparent character art;
-   boss floors (mid-boss and final boss) keep a plain black backdrop for a more dramatic, focused look */
+/* every floor shows the dungeon backdrop behind the transparent character art; boss floors tint it
+   blood-red so they still read as a different, more dangerous room */
 .enemy-visual.has-backdrop {
   background-image: radial-gradient(circle at 50% 38%, rgba(44,39,57,0.35), rgba(22,20,29,0.75) 72%), url("../enemies/bg-dungeon.webp");
   background-size: cover; background-position: center;
 }
-.enemy-visual.boss-bg { background: #000; }
+.enemy-visual.has-backdrop.boss {
+  background-image: radial-gradient(circle at 50% 42%, rgba(120,20,48,0.30), rgba(24,4,14,0.86) 74%), url("../enemies/bg-dungeon.webp");
+}
 .enemy-visual img { width: 100%; height: 100%; object-fit: contain; }
 .enemy-visual-hint { color: var(--text-dim); font-size: 13px; letter-spacing: 1px; text-align: center; }
 .floor-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
