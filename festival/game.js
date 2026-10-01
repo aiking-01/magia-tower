@@ -42,7 +42,7 @@
 
   // 敵HP: log10(HP) が「1階ごとに 0.1 × 1.2^(階−1)」ずつ増える。序盤は1階×1.3程度だが、20階台では
   // 1階で×10億を超え、最後は1階で×1E+14。中ボス階は上乗せ（その階だけ）。ラスボスはちょうど1グーゴル。
-  // 数値はバランス用シミュレーター（README参照）で「人間のペースで中央値17分前後・5回目の挑戦でクリア」になるよう調整したもの。
+  // 数値はバランス用シミュレーター（README参照）で「人間のペースで中央値17〜18分・5回目の挑戦でクリア」になるよう調整したもの。
   const HP_LOG_START = Math.log10(60);
   const HP_LOG_STEP = 0.1;
   const HP_LOG_GROWTH = 1.2;
@@ -130,7 +130,9 @@
     { label: "商才の芽生え", desc: "獲得金額 +50%", cost: 2, effect: { goldPct: 50 } },
   ]);
   const GOLD_FORK_ROOT = GOLD_TRUNK[GOLD_TRUNK.length - 1].id;
+  // 商人の枝の入口が自動購入。最初の挑戦は自分で秘薬を選んで買い、慣れたら自動にする流れ
   const GOLD_SHOP = buildChain("goldS", "gold", 3, GOLD_FORK_ROOT, [
+    { label: "自動購入開放", desc: "商人で自動購入（全部買う→リロール）が使える", cost: 4, kind: "autoBuy" },
     { label: "商人の信頼", desc: "商人の提案 +1件", cost: 5, effect: { shopSlots: 1 } },
     { label: "開拓者の懐", desc: "開始時の所持金 +100G", cost: 10, effect: { startGold: 100 } },
     { label: "富の帝国", desc: "獲得金額 +100%", cost: 20, effect: { goldPct: 100 } },
@@ -245,7 +247,7 @@
     return {
       points: 0, unlockedNodes: {}, bestFloor: 0, bestClearedFloor: 0,
       deckDefs: cloneDeckDefs(BASE_DECK_DEFS),
-      autoBuyEnabled: true, // 展示ではテンポ優先で最初からON（商人画面のチェックで切り替え可）
+      autoBuyEnabled: false, // 「自動購入開放」を習得した時点でONになる（商人画面のチェックで切り替え可）
       level: 1, exp: new Decimal(0),
       stats: {}, // runs, kills, maxHit (Decimal)
       unitReached: -1, // JP_UNITS の何番目の位まで一撃で届いたか（演出を一度だけ出すため）
@@ -558,7 +560,7 @@
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     $("screen-" + name).classList.add("active");
-    document.body.classList.toggle("home-bg", name === "home");
+    document.body.classList.toggle("title-bg", name === "home");
     window.scrollTo(0, 0);
   }
   function activeScreen() {
@@ -759,8 +761,8 @@
     }, KILL_PAUSE_MS);
   }
 
-  // ソウル = クリアした階の階数の合計 × 1.3（× 基本強化のソウル獲得）。本編と同じく、高い階ほど多くもらえる
-  const SOUL_PER_FLOOR = 1.3;
+  // ソウル = クリアした階の階数の合計 × 1.5（× 基本強化のソウル獲得）。本編と同じく、高い階ほど多くもらえる
+  const SOUL_PER_FLOOR = 1.5;
   function awardRunEndPoints() {
     const gained = Math.floor(game.floorPointsSum * SOUL_PER_FLOOR * soulMultiplier());
     save.points += gained;
@@ -874,7 +876,7 @@
     el.autoBuySummary.textContent = "";
     renderShop();
     showScreen("floorClear");
-    if (save.autoBuyEnabled) setTimeout(runAutoBuy, AUTO_BUY_STEP_MS);
+    if (autoBuyUnlocked() && save.autoBuyEnabled) setTimeout(runAutoBuy, AUTO_BUY_STEP_MS);
   }
 
   function renderShop() {
@@ -899,6 +901,7 @@
     el.rerollBtn.disabled = !canReroll;
     el.rerollBtn.style.opacity = canReroll ? "1" : "0.5";
     el.autoBuyBtn.textContent = autoBuyRunning ? "自動購入を停止" : "自動購入";
+    el.autoBuyRow.style.display = autoBuyUnlocked() ? "" : "none";
     el.autoBuyToggle.checked = !!save.autoBuyEnabled;
   }
   el.rerollBtn.addEventListener("click", () => { if (!autoBuyRunning && doReroll()) renderShop(); });
@@ -907,8 +910,9 @@
   const AUTO_BUY_STEP_MS = 25;
   let autoBuyRunning = false;
   let autoBuyStopRequested = false;
+  function autoBuyUnlocked() { return NODES.some((n) => n.kind === "autoBuy" && save.unlockedNodes[n.id]); }
   async function runAutoBuy() {
-    if (autoBuyRunning || !game || !game.shopOffers) return;
+    if (autoBuyRunning || !game || !game.shopOffers || !autoBuyUnlocked()) return;
     const thisGame = game;
     const stillHere = () => game === thisGame && game.shopOffers && activeScreen() === "floorClear";
     autoBuyRunning = true;
@@ -1173,6 +1177,38 @@
   window.addEventListener("resize", () => { if (activeScreen() === "battle") syncEnemyVisualHeight(); });
 
   // ---------------- タイトル ----------------
+  // 杖のオーブから立ちのぼる光の粒（位置・大きさ・速さをばらしてCSSアニメーションに渡す）と、
+  // 杖をクリックしたときに弾ける光。待っている人が触っても楽しいように
+  const staffEl = $("homeStaff");
+  const staffSparks = $("staffSparks");
+  const rand = (a, b) => a + Math.random() * (b - a);
+  for (let i = 0; i < 16; i++) {
+    const s = document.createElement("i");
+    const t = rand(2.6, 4.8);
+    s.style.setProperty("--s", rand(3, 7).toFixed(1) + "px");
+    s.style.setProperty("--x", rand(-7, 7).toFixed(1) + "vh");
+    s.style.setProperty("--y", rand(-24, -9).toFixed(1) + "vh");
+    s.style.setProperty("--t", t.toFixed(2) + "s");
+    s.style.setProperty("--d", (-rand(0, t)).toFixed(2) + "s");
+    staffSparks.appendChild(s);
+  }
+  staffEl.addEventListener("click", () => {
+    staffEl.classList.remove("flash");
+    void staffEl.offsetWidth;
+    staffEl.classList.add("flash");
+    for (let i = 0; i < 22; i++) {
+      const s = document.createElement("i");
+      const angle = (i / 22) * Math.PI * 2 + rand(-0.15, 0.15);
+      const dist = rand(9, 20);
+      s.className = "burst";
+      s.style.setProperty("--s", rand(4, 9).toFixed(1) + "px");
+      s.style.setProperty("--x", (Math.cos(angle) * dist).toFixed(1) + "vh");
+      s.style.setProperty("--y", (Math.sin(angle) * dist).toFixed(1) + "vh");
+      staffSparks.appendChild(s);
+      setTimeout(() => s.remove(), 950);
+    }
+  });
+
   function goHome() { showScreen("home"); renderHome(); }
   function renderHome() {
     el.homeLevelLabel.textContent = save.level;
@@ -1294,6 +1330,11 @@
           save.unlockedNodes[node.id] = true;
           if (node.kind === "startCards") node.cards.forEach((c) => addCardToDeckDefs(save.deckDefs, c));
           else if (node.kind === "grantPoints") save.points += node.pointsGrant;
+          else if (node.kind === "autoBuy") {
+            // 買った＝自動にしたい、なので最初からONにしておく（商人画面のチェックでいつでもOFFにできる）
+            save.autoBuyEnabled = true;
+            showToast("自動購入が使えるようになった！ 階をクリアすると商人で自動で買い物をする（商人画面でON/OFF）");
+          }
           persistSave();
           renderTree();
         });

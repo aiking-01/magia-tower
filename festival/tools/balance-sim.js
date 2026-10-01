@@ -10,9 +10,10 @@ const P = {
   BOSS_EXTRA: { 10: 0.4, 20: 1.5 }, FINAL_HP_LOG: 100,
   BASE_ATK: 10, BASE_N: 5, BASE_HAND: 5, BASE_CRIT: 5,
   LEVEL_ATK_MULT: 1.5, LEVEL_EXP_GROWTH: 3, LEVEL_EXP_BASE: 30,
-  SOUL_PER_FLOOR: 1.3,
+  SOUL_PER_FLOOR: 1.5,
   // 人間のペースの仮定（秒）: カード1枚 / 階クリア画面 / 挑戦の開始と終了 / 強化画面1回 / ノード1つ / 最初の説明
-  T_CARD: 2.5, T_FLOOR: 4, T_RUN: 15, T_TREE: 45, T_NODE: 5, T_INTRO: 60,
+  // T_FLOOR_MANUAL: 「自動購入開放」を習得するまでは、商人で自分で秘薬を選ぶぶん階クリア画面が長い
+  T_CARD: 2.5, T_FLOOR: 4, T_FLOOR_MANUAL: 8, T_RUN: 15, T_TREE: 45, T_NODE: 5, T_INTRO: 60,
 };
 const card = (name, type, v, cnt, cr, cd) => ({ name, type, v, cnt: cnt || 1, cr: cr || 0, cd: cd || 0 });
 const BASE_DECK = [card("斬撃", "attack", 15, 5), card("強撃", "attack", 20, 3), card("会心撃", "attack", 18, 2, 5, 20)];
@@ -27,7 +28,7 @@ const TREE = [].concat(
   chain("nDmg", "n2", [{ cost: 7, critDmg: 50 }, { cost: 15, critDmg: 100 }, { cost: 33, critDmg: 200 }]),
   chain("nMult", "n2", [{ cost: 8, fm: 3 }, { cost: 18, exp: 0.25 }, { cost: 38, fm: 3 }, { cost: 70, exp: 0.5, hand: 1 }]),
   chain("gold", "root", [{ cost: 1, soul: 20 }, { cost: 2, gold: 50 }]),
-  chain("goldS", "gold2", [{ cost: 5, slots: 1 }, { cost: 10, startGold: 100 }, { cost: 20, gold: 100 }]),
+  chain("goldS", "gold2", [{ cost: 4, autoBuy: true }, { cost: 5, slots: 1 }, { cost: 10, startGold: 100 }, { cost: 20, gold: 100 }]),
   chain("goldSoul", "gold2", [{ cost: 7, soul: 30 }, { cost: 15, soul: 40 }, { cost: 30, soul: 50 }]),
   chain("goldExp", "gold2", [{ cost: 4, exp: 0.15 }, { cost: 13, exp: 0.25 }, { cost: 30, exp: 0.35 }]),
 );
@@ -97,7 +98,7 @@ function simulate(seed, verbose, randomPlay) {
         save.expLog = rest > 0 ? need + log10(rest) : -Infinity;
         save.level++;
       }
-      t += P.T_FLOOR; cnt.floors++;
+      t += sum("autoBuy") ? P.T_FLOOR : P.T_FLOOR_MANUAL; cnt.floors++;
       if (floor === P.FINAL) { won = true; break; }
       // 商人（自動購入をざっくり再現: 安いものから買う）
       run.gold += (20 + floor * 5) * (1 + (sum("gold") + run.goldPct) / 100);
