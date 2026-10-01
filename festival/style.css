@@ -23,6 +23,12 @@
 * { box-sizing: border-box; }
 /* stops iOS Safari from inflating font sizes of its own accord when the phone is turned sideways */
 html { -webkit-text-size-adjust: 100%; }
+/* nothing may widen the page sideways: the title's magic circle reaches past the right edge, and the
+   screen slide-in animation shifts content right for a moment. With the page wider than the window,
+   the reset dialog's focus could scroll it left, and the extra width briefly popped up scrollbars.
+   (clip, unlike hidden, also refuses programmatic scrolling.) */
+html { overflow-x: hidden; }
+body { overflow-x: clip; }
 body {
   margin: 0;
   background: var(--bg);
@@ -169,15 +175,13 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
   display: flex; align-items: center; justify-content: center;
 }
 .enemy-visual.boss { border-color: var(--boss); }
-/* every floor shows the dungeon backdrop behind the transparent character art; boss floors tint it
-   blood-red so they still read as a different, more dangerous room */
+/* regular floors show the dungeon backdrop behind the transparent character art; boss floors (mid-boss
+   and final boss) keep a plain black backdrop for a more dramatic, focused look */
 .enemy-visual.has-backdrop {
   background-image: radial-gradient(circle at 50% 38%, rgba(44,39,57,0.35), rgba(22,20,29,0.75) 72%), url("../enemies/bg-dungeon.webp");
   background-size: cover; background-position: center;
 }
-.enemy-visual.has-backdrop.boss {
-  background-image: radial-gradient(circle at 50% 42%, rgba(120,20,48,0.30), rgba(24,4,14,0.86) 74%), url("../enemies/bg-dungeon.webp");
-}
+.enemy-visual.boss-bg { background: #000; }
 .enemy-visual img { width: 100%; height: 100%; object-fit: contain; }
 .enemy-visual-hint { color: var(--text-dim); font-size: 13px; letter-spacing: 1px; text-align: center; }
 .floor-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
@@ -204,7 +208,9 @@ body.home-bg h1 { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); }
 .log-line.gold { color: var(--gold); }
 .log-line.crit { color: #ff4d4d; font-weight: 700; }
 .hand-title { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; }
-.hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+/* every row as tall as the tallest one: a freshly drawn card is a flip box whose faces are absolutely
+   positioned (no content height), so alone on a wrapped row it used to collapse to its min-height */
+.hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: 1fr; gap: 10px; }
 .card {
   border-radius: 10px; padding: 10px 8px; cursor: pointer; text-align: center; user-select: none;
   border: 1px solid transparent; transition: transform 0.12s ease, border-color 0.12s ease;
@@ -1156,3 +1162,88 @@ body.title-bg h1 { display: none; } /* the logo is the title here */
   .home-stage .home-stats { font-size: 15px; }
   .home-stage .home-stats b { font-size: 19px; }
 }
+
+/* ---- 杖の魔法陣（豪華版）: 光の筋・ルーンの外輪・六芒星・八芒星・波紋・周回する小円・足元の魔法陣 ---- */
+.mc-rays, .mc-outer, .mc-inner, .mc-orbit, .mc-ripple { position: absolute; pointer-events: none; left: 78.1%; top: 17.3%; }
+.mc-rays {
+  width: 150%; aspect-ratio: 1; z-index: 0; border-radius: 50%; mix-blend-mode: screen; opacity: 0.75;
+  background: repeating-conic-gradient(from 0deg, rgba(160, 220, 255, 0.22) 0deg 3deg, transparent 3deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 0 14%, rgba(0, 0, 0, 0.6) 30%, transparent 62%);
+  mask: radial-gradient(circle, #000 0 14%, rgba(0, 0, 0, 0.6) 30%, transparent 62%);
+  animation: circleSpin 46s linear infinite;
+}
+.mc-outer {
+  width: 128%; aspect-ratio: 1; z-index: 0; overflow: visible; opacity: 0.55;
+  filter: drop-shadow(0 0 6px rgba(120, 200, 255, 0.75));
+  animation: circleSpin 80s linear infinite reverse;
+}
+.mc-outer circle { fill: none; stroke: #8fd3ff; stroke-width: 0.8; }
+.mc-outer .thin { stroke-width: 0.45; opacity: 0.8; }
+.mc-outer .tick { stroke: #8fd3ff; stroke-width: 0.8; }
+.mc-outer text { fill: #cdeaff; font-size: 8.2px; letter-spacing: 1.6px; font-family: "Times New Roman", "Yu Mincho", serif; }
+.mc-inner {
+  width: 48%; aspect-ratio: 1; z-index: 1; overflow: visible; opacity: 0.85;
+  filter: drop-shadow(0 0 5px rgba(255, 220, 140, 0.9));
+  animation: circleSpin 18s linear infinite reverse;
+}
+.mc-inner circle, .mc-inner polygon { fill: none; stroke: #ffe9a8; stroke-width: 1.2; }
+.mc-inner .thin { stroke-width: 0.7; opacity: 0.8; }
+.mc-inner .dash { stroke-dasharray: 4 5; }
+.mc-ripple {
+  width: 38%; aspect-ratio: 1; z-index: 1; border-radius: 50%; opacity: 0;
+  border: 1.5px solid rgba(170, 230, 255, 0.85); box-shadow: 0 0 12px rgba(120, 200, 255, 0.6);
+  animation: mcRipple 3.6s ease-out infinite;
+}
+.mc-ripple.r2 { animation-delay: -1.2s; }
+.mc-ripple.r3 { animation-delay: -2.4s; }
+@keyframes mcRipple {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  15% { opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(2.8); opacity: 0; }
+}
+.mc-orbit { width: 100%; aspect-ratio: 1; z-index: 3; overflow: visible; animation: circleSpin 13s linear infinite; }
+.mc-orbit circle { fill: rgba(255, 233, 168, 0.14); stroke: #ffe9a8; stroke-width: 0.9; }
+.mc-orbit polygon, .mc-orbit rect { fill: none; stroke: #ffe9a8; stroke-width: 0.7; }
+.mc-orbit g { filter: drop-shadow(0 0 4px rgba(255, 220, 140, 0.9)); }
+/* the staff's lower tip sits at about (4%, 97%) of the staff image: a flattened circle glows under it */
+.mc-ground {
+  position: absolute; left: 5%; top: 96%; width: 72%; aspect-ratio: 1; z-index: 0; pointer-events: none;
+  transform: translate(-50%, -50%) scaleY(0.32);
+}
+.mc-ground svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 8px rgba(255, 200, 120, 0.85)); animation: groundSpin 26s linear infinite; }
+.mc-ground circle, .mc-ground polygon { fill: none; stroke: #ffd98a; stroke-width: 1.2; }
+.mc-ground .thin { stroke-width: 0.6; }
+.mc-ground .dash { stroke-dasharray: 4 6; }
+@keyframes groundSpin { to { transform: rotate(360deg); } }
+@media (hover: hover) {
+  .home-staff:hover .mc-outer, .home-staff:hover .mc-inner { opacity: 1; }
+  .home-staff:hover .mc-ripple { animation-duration: 2s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-rays, .mc-outer, .mc-inner, .mc-orbit, .mc-ripple, .mc-ground svg { animation: none !important; }
+  .mc-ripple { display: none; }
+}
+
+/* カードの背面（タイトル画面の雰囲気：夜空・月・杖・Magia・桃色のきらめき） */
+.deck-pile-card, .card-flip-face.card-back {
+  /* contain + the image's own edge color: the whole picture always shows, on a wide deck pile or a tall card */
+  background: #0e1340 url("../assets/card-back.webp") center / contain no-repeat;
+  border: 1px solid rgba(224, 184, 74, 0.6);
+  box-shadow: inset 0 0 0 3px #0e1340, inset 0 0 0 4px rgba(224, 184, 74, 0.45);
+}
+.deck-pile-card.back-1::after, .card-flip-face.card-back::after { content: none; }
+
+/* small circles ringing the shaft. The shaft runs from the orb (78.1%, 17.3%) down to the tip (5%, 96%),
+   about 117° on screen, so each ring is squashed across a 27° axis to sit around the staff like a bangle */
+.mc-shaft { position: absolute; z-index: 3; pointer-events: none; aspect-ratio: 1; transform: translate(-50%, -50%) rotate(27deg) scaleY(0.34); }
+.mc-shaft.s1 { left: 52.5%; top: 45%; width: 30%; }
+.mc-shaft.s2 { left: 38%; top: 60.5%; width: 24%; }
+.mc-shaft.s3 { left: 23.5%; top: 76%; width: 19%; }
+.mc-shaft svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 5px rgba(150, 220, 255, 0.95)); animation: groundSpin 9s linear infinite; }
+.mc-shaft.s2 svg { animation-direction: reverse; animation-duration: 7s; filter: drop-shadow(0 0 5px rgba(255, 220, 140, 0.95)); }
+.mc-shaft.s3 svg { animation-duration: 5.5s; }
+.mc-shaft circle, .mc-shaft polygon { fill: none; stroke: #a8e4ff; stroke-width: 2.2; }
+.mc-shaft.s2 circle, .mc-shaft.s2 polygon { stroke: #ffe3a0; }
+.mc-shaft .thin { stroke-width: 1.4; }
+.mc-shaft .dash { stroke-dasharray: 6 8; }
+@media (prefers-reduced-motion: reduce) { .mc-shaft svg { animation: none !important; } }

@@ -313,10 +313,10 @@
       if (n.abs().lt(E_NOTATION_THRESHOLD)) return fmt(n.toNumber());
       const [mant, exp] = n.toExponential(2).split("e");
       const e = Number(exp);
-      return mant + "E" + (e < 0 ? "-" : "+") + Math.abs(e);
+      return mant + "E" + (e < 0 ? "-" : "") + Math.abs(e);
     }
     const rounded = Math.round(n);
-    if (Math.abs(rounded) >= E_NOTATION_THRESHOLD) return rounded.toExponential(2).replace("e+", "E+").replace("e-", "E-");
+    if (Math.abs(rounded) >= E_NOTATION_THRESHOLD) return rounded.toExponential(2).replace("e+", "E").replace("e-", "E-");
     return rounded.toLocaleString("ja-JP");
   }
   function fmtMult(n) {
@@ -1071,8 +1071,9 @@
     el.enemyName.classList.toggle("boss", enemy.isBoss);
     el.enemyBar.classList.toggle("boss", enemy.isBoss);
     el.enemyVisual.classList.toggle("boss", enemy.isBoss);
-    // every floor (bosses included, now that their art is transparent too) shows the dungeon backdrop
-    el.enemyVisual.classList.add("has-backdrop");
+    // regular floors show the dungeon backdrop; boss floors keep a plain black one for a more dramatic look
+    el.enemyVisual.classList.toggle("has-backdrop", !enemy.isBoss);
+    el.enemyVisual.classList.toggle("boss-bg", enemy.isBoss);
     if (el.enemyVisual.dataset.art !== enemy.art) {
       el.enemyVisual.dataset.art = enemy.art;
       el.enemyVisual.innerHTML = "";

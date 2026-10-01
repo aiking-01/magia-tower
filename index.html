@@ -14,29 +14,95 @@
 
     <!-- ============ HOME ============ -->
     <div class="screen" id="screen-home">
-      <div class="panel home-hero">
-        <div class="home-stats">
-          <span>Lv <b id="homeLevelLabel">1</b> <small id="homeExpLabel"></small></span>
-          <span>最高到達階 <b id="bestFloorLabel">-</b></span>
-          <span>ソウル <b id="homePointsLabel">0</b></span>
-          <span id="homeTranscendStat" style="display:none;">転生ポイント <b id="homeTranscendLabel">0</b></span>
+      <div class="home-stage">
+        <div class="home-main">
+          <div class="home-logo">
+            <img src="assets/title-logo.webp" alt="Magia Tower">
+            <div class="home-edition">マギア・タワー　<span>完全版</span></div>
+          </div>
+          <div class="home-stats">
+            <span>Lv <b id="homeLevelLabel">1</b> <small id="homeExpLabel"></small></span>
+            <span>最高到達階 <b id="bestFloorLabel">-</b></span>
+            <span>ソウル <b id="homePointsLabel">0</b></span>
+            <span id="homeTranscendStat" style="display:none;">転生ポイント <b id="homeTranscendLabel">0</b></span>
+          </div>
+          <div class="home-columns">
+            <div class="home-banner-buttons">
+              <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
+              <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
+              <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
+              <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
+              <button class="btn secondary" id="openAchievementsBtn">実績</button>
+              <button class="btn secondary" id="openPanelPreviewBtn" style="display:none;">転生パネルを見る</button>
+              <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
+              <div class="menu-desc" id="menuDesc" aria-hidden="true"><div class="menu-desc-inner">
+                <div class="menu-desc-title" id="menuDescTitle"></div>
+                <div class="menu-desc-text" id="menuDescText"></div>
+              </div></div>
+              <div class="sealed-section" id="homeSealed" style="display:none;">
+                <div class="sealed-heading">苦難により封印された力</div>
+                <div class="sealed-grid" id="homeSealedGrid"></div>
+              </div>
+            </div>
+            <div class="home-side">
+              <div class="trial-banner" id="trialBanner" style="display:none;">
+                <span id="trialBannerText"></span>
+                <button class="btn ghost" id="abandonTrialBtn">苦難を放棄</button>
+              </div>
+              <div class="idle-report" id="idleReport"></div>
+              <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
+            </div>
+          </div>
+          <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
         </div>
-        <div class="home-banner-buttons">
-          <button class="btn primary" id="openFloorSelectBtn">塔に挑む</button>
-          <button class="btn secondary" id="openTreeBtn">基本強化を見る</button>
-          <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
-          <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
-          <button class="btn secondary" id="openAchievementsBtn">実績</button>
-          <button class="btn secondary" id="openPanelPreviewBtn" style="display:none;">転生パネルを見る</button>
-          <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
+        <div class="home-staff" id="homeStaff" title="杖に触れる">
+          <div class="staff-float">
+            <div class="mc-rays"></div>
+            <svg class="mc-outer" viewBox="0 0 200 200" aria-hidden="true">
+              <defs><path id="mcRunePath" d="M100,100 m-74,0 a74,74 0 1,1 148,0 a74,74 0 1,1 -148,0" /></defs>
+              <circle cx="100" cy="100" r="96" />
+              <circle cx="100" cy="100" r="88" class="thin" />
+              <circle cx="100" cy="100" r="67" class="thin" />
+              <line class="tick" x1="186.0" y1="100.0" x2="180.0" y2="100.0" /><line class="tick" x1="184.7" y1="114.9" x2="181.7" y2="114.4" /><line class="tick" x1="180.8" y1="129.4" x2="178.0" y2="128.4" /><line class="tick" x1="174.5" y1="143.0" x2="169.3" y2="140.0" /><line class="tick" x1="165.9" y1="155.3" x2="163.6" y2="153.4" /><line class="tick" x1="155.3" y1="165.9" x2="153.4" y2="163.6" /><line class="tick" x1="143.0" y1="174.5" x2="140.0" y2="169.3" /><line class="tick" x1="129.4" y1="180.8" x2="128.4" y2="178.0" /><line class="tick" x1="114.9" y1="184.7" x2="114.4" y2="181.7" /><line class="tick" x1="100.0" y1="186.0" x2="100.0" y2="180.0" /><line class="tick" x1="85.1" y1="184.7" x2="85.6" y2="181.7" /><line class="tick" x1="70.6" y1="180.8" x2="71.6" y2="178.0" /><line class="tick" x1="57.0" y1="174.5" x2="60.0" y2="169.3" /><line class="tick" x1="44.7" y1="165.9" x2="46.6" y2="163.6" /><line class="tick" x1="34.1" y1="155.3" x2="36.4" y2="153.4" /><line class="tick" x1="25.5" y1="143.0" x2="30.7" y2="140.0" /><line class="tick" x1="19.2" y1="129.4" x2="22.0" y2="128.4" /><line class="tick" x1="15.3" y1="114.9" x2="18.3" y2="114.4" /><line class="tick" x1="14.0" y1="100.0" x2="20.0" y2="100.0" /><line class="tick" x1="15.3" y1="85.1" x2="18.3" y2="85.6" /><line class="tick" x1="19.2" y1="70.6" x2="22.0" y2="71.6" /><line class="tick" x1="25.5" y1="57.0" x2="30.7" y2="60.0" /><line class="tick" x1="34.1" y1="44.7" x2="36.4" y2="46.6" /><line class="tick" x1="44.7" y1="34.1" x2="46.6" y2="36.4" /><line class="tick" x1="57.0" y1="25.5" x2="60.0" y2="30.7" /><line class="tick" x1="70.6" y1="19.2" x2="71.6" y2="22.0" /><line class="tick" x1="85.1" y1="15.3" x2="85.6" y2="18.3" /><line class="tick" x1="100.0" y1="14.0" x2="100.0" y2="20.0" /><line class="tick" x1="114.9" y1="15.3" x2="114.4" y2="18.3" /><line class="tick" x1="129.4" y1="19.2" x2="128.4" y2="22.0" /><line class="tick" x1="143.0" y1="25.5" x2="140.0" y2="30.7" /><line class="tick" x1="155.3" y1="34.1" x2="153.4" y2="36.4" /><line class="tick" x1="165.9" y1="44.7" x2="163.6" y2="46.6" /><line class="tick" x1="174.5" y1="57.0" x2="169.3" y2="60.0" /><line class="tick" x1="180.8" y1="70.6" x2="178.0" y2="71.6" /><line class="tick" x1="184.7" y1="85.1" x2="181.7" y2="85.6" />
+              <text><textPath href="#mcRunePath">✦ MAGIA ✦ ARCANUM ✦ AETERNUM ✦ TURRIS ✦ STELLA ✦ LUMEN ✦ POTENTIA ✦ INFINITAS </textPath></text>
+            </svg>
+            <svg class="staff-circle" viewBox="0 0 200 200" aria-hidden="true">
+              <circle cx="100" cy="100" r="92" />
+              <circle cx="100" cy="100" r="84" class="thin" />
+              <circle cx="100" cy="100" r="58" class="dash" />
+              <polygon points="100,18 171,141 29,141" />
+              <polygon points="100,182 29,59 171,59" />
+            </svg>
+            <svg class="mc-inner" viewBox="0 0 200 200" aria-hidden="true">
+              <circle cx="100" cy="100" r="90" />
+              <polygon points="100,12 126,74 188,100 126,126 100,188 74,126 12,100 74,74" />
+              <polygon points="100,40 142,58 160,100 142,142 100,160 58,142 40,100 58,58" class="thin" />
+              <circle cx="100" cy="100" r="30" class="dash" />
+            </svg>
+            <div class="mc-ripple"></div><div class="mc-ripple r2"></div><div class="mc-ripple r3"></div>
+            <svg class="mc-orbit" viewBox="0 0 200 200" aria-hidden="true">
+              <g transform="translate(100 8)"><circle r="9" /><polygon points="0,-6 5.2,3 -5.2,3" /></g>
+              <g transform="translate(180 146)"><circle r="7" /><polygon points="0,5 -4.3,-2.5 4.3,-2.5" /></g>
+              <g transform="translate(20 146)"><circle r="8" /><rect x="-4" y="-4" width="8" height="8" /></g>
+            </svg>
+            <div class="mc-ground" aria-hidden="true">
+              <svg viewBox="0 0 200 200">
+                <circle cx="100" cy="100" r="94" />
+                <circle cx="100" cy="100" r="80" class="thin" />
+                <polygon points="100,20 169,140 31,140" />
+                <polygon points="100,180 31,60 169,60" />
+                <circle cx="100" cy="100" r="40" class="dash" />
+              </svg>
+            </div>
+            <div class="mc-shaft s1" aria-hidden="true"><svg viewBox="0 0 200 200"><circle cx="100" cy="100" r="92" /><circle cx="100" cy="100" r="74" class="thin" /><polygon points="100,14 175,143 25,143" /><polygon points="100,186 25,57 175,57" /></svg></div>
+            <div class="mc-shaft s2" aria-hidden="true"><svg viewBox="0 0 200 200"><circle cx="100" cy="100" r="92" /><polygon points="100,12 126,74 188,100 126,126 100,188 74,126 12,100 74,74" class="thin" /><circle cx="100" cy="100" r="40" class="dash" /></svg></div>
+            <div class="mc-shaft s3" aria-hidden="true"><svg viewBox="0 0 200 200"><circle cx="100" cy="100" r="92" /><circle cx="100" cy="100" r="70" class="dash" /><polygon points="100,22 168,139 32,139" /></svg></div>
+            <img class="staff-img" src="assets/title-staff.webp" alt="">
+            <div class="staff-orb"></div>
+            <div class="staff-prism"></div>
+            <div class="staff-sparks" id="staffSparks"></div>
+          </div>
         </div>
-        <div class="trial-banner" id="trialBanner" style="display:none;">
-          <span id="trialBannerText"></span>
-          <button class="btn ghost" id="abandonTrialBtn">苦難を放棄</button>
-        </div>
-        <div class="idle-report" id="idleReport"></div>
-        <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
-        <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
       </div>
     </div>
 
@@ -255,10 +321,17 @@
           <button class="btn ghost" id="trialBackBtn" style="width:auto;margin:0;">← 転生パネルへ</button>
           <div class="tree-points">乗り越えた苦難 <b id="trialClearedLabel">0</b></div>
         </div>
+        <div class="trial-actions">
+          <div class="trial-selection" id="trialSelection"></div>
+          <div class="trial-action-btns">
+            <button class="btn primary" id="trialStartBtn" disabled>選んだ苦難に挑む</button>
+            <button class="btn secondary" id="trialSkipBtn">苦難に挑まずに次の周回へ</button>
+          </div>
+        </div>
         <div class="tree-screen-title">苦難</div>
-        <div class="deck-zone-sub">次の周回で挑む苦難を選べる。苦難はこの周回の間ずっと続き、挑戦中は転生パネルの効果（残滓・カードショップ・拡張強化を含む）が封印される。苦難に挑んだままラスボスを倒すと、難易度に応じた永続的な超強化を得る（それぞれ初回のみ）。苦難は8つの方向それぞれに★〜★★★の3段階があり、上の段階は同じ方向の1つ下を越えると挑める。</div>
+        <div class="deck-zone-sub">次の周回で挑む苦難を選ぶ（複数選べる。同じ方向からは1段階まで）。苦難はこの周回の間ずっと続き、挑戦中は転生パネルの効果（残滓・カードショップ・拡張強化を含む）が封印される。苦難に挑んだままラスボスを倒すと、選んだ苦難それぞれの永続報酬を得る（各苦難で初回のみ）。上の段階は、同じ方向の1つ下を越えると選べる。</div>
+        <div class="trial-combo" id="trialCombo"></div>
         <div class="trial-list" id="trialList"></div>
-        <button class="btn secondary" id="trialSkipBtn">苦難に挑まずに次の周回へ</button>
       </div>
     </div>
 
@@ -271,7 +344,7 @@
         </div>
         <div class="tree-screen-title">実績</div>
         <div class="deck-zone-sub">実績の効果は足し合わされ、転生してもなくならない。</div>
-        <div class="deck-zone-sub" id="achievementsTotal" style="font-weight:800; color:var(--gold);"></div>
+        <div class="deck-zone-sub" id="achievementsTotal"></div>
         <div class="ach-list" id="achievementsList"></div>
       </div>
     </div>

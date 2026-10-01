@@ -278,10 +278,10 @@
       remnantDecks: [], // one deck (array of card defs) per summoned remnant; never reset
       remnantTree: {}, // remnant skill tree node id -> true; shared by all remnants, never reset
       lastSeen: 0, // ms timestamp of the last time the game was open (offline remnant income)
-      activeTrial: null, // id of the 苦難 being attempted this loop (null = none); see TRIALS
+      activeTrials: [], // ids of the 苦難 being attempted together this loop (one per direction); see TRIALS
+      trialComboBest: 0, // most 苦難 ever beaten at once (each new record 2…8 adds its 同時挑戦ボーナス)
       trialPending: false, // set by reincarnating: the 苦難 screen comes up once the panel is left
       trialsCleared: {}, // 苦難 id -> true once beaten (its reward is permanent)
-      unitReached: -1, // index into JP_UNITS of the biggest 位 one hit has reached (drives the kanji stamp)
       treeExt: {}, // 拡張強化 id -> level; bought with souls, reset by reincarnation like the basic tree
     };
   }
@@ -319,6 +319,10 @@
       // big numbers are saved as strings (Decimal#toJSON); older saves have plain numbers, or null
       // where an overflowed Infinity was written
       merged.exp = toDecimal(merged.exp);
+      // a single 苦難 used to be stored as activeTrial
+      if (!Array.isArray(merged.activeTrials)) merged.activeTrials = [];
+      if (typeof merged.activeTrial === "string" && !merged.activeTrials.length) merged.activeTrials = [merged.activeTrial];
+      delete merged.activeTrial;
       merged.stats.maxHit = toDecimal(merged.stats.maxHit);
       return merged;
     } catch (e) {
@@ -522,7 +526,9 @@
     TRIALS.push(Object.assign({ id: cat.id + (i + 1), cat, level: i + 1, stars: i + 1, name: `${cat.name}の試練・${TRIAL_LEVEL_NAMES[i]}` }, lv));
   }));
   function trialRuleTexts(t) {
-    const r = t.rules;
+    const defs = Array.isArray(t) ? t : [t];
+    const keys = [...new Set(defs.flatMap((d) => Object.keys(d.rules)))];
+    const r = Object.fromEntries(keys.map((k) => [k, combineTrialRule(defs, k)]));
     const out = ["転生パネルの効果が封印される（残滓・カードショップ・拡張強化も使えない）"];
     if (r.hpMult) out.push(`敵のHP ×${fmt(r.hpMult)}`);
     if (r.atkMult) out.push(`攻撃力 ×${r.atkMult}`);
@@ -546,17 +552,30 @@
     if (t.level > trialsUnlockedCount()) return false;
     return t.level === 1 || !!save.trialsCleared[t.cat.id + (t.level - 1)];
   }
-  function activeTrialDef() { return TRIALS.find((t) => t.id === save.activeTrial) || null; }
-  function trialSealed() { return !!activeTrialDef(); }
-  function trialRule(key, fallback) {
-    const t = activeTrialDef();
-    return t && t.rules[key] != null ? t.rules[key] : fallback;
+  function activeTrialDefs() { return save.activeTrials.map((id) => TRIALS.find((t) => t.id === id)).filter(Boolean); }
+  function trialSealed() { return activeTrialDefs().length > 0; }
+  // several 苦難 at once: multipliers multiply, ±counts add up, on/off restrictions apply if any has them
+  const TRIAL_SUM_RULES = ["nDelta", "handDelta"];
+  function combineTrialRule(defs, key, fallback) {
+    const vals = defs.map((t) => t.rules[key]).filter((v) => v != null);
+    if (!vals.length) return fallback;
+    if (typeof vals[0] === "boolean") return vals.some(Boolean);
+    if (TRIAL_SUM_RULES.includes(key)) return vals.reduce((a, b) => a + b, 0);
+    return vals.reduce((a, b) => a * b, 1);
+  }
+  function trialRule(key, fallback) { return combineTrialRule(activeTrialDefs(), key, fallback); }
+  // 同時挑戦ボーナス: beating k 苦難 at once for the first time (k = 2…8) adds a permanent 全ダメージ ×k
+  function trialComboMult() {
+    let m = 1;
+    for (let k = 2; k <= (save.trialComboBest || 0); k++) m *= k;
+    return m;
   }
   function trialRewardSum(key) {
     return TRIALS.reduce((sum, t) => sum + (save.trialsCleared[t.id] && t.reward[key] ? t.reward[key] : 0), 0);
   }
   function trialRewardProduct(key) {
-    return TRIALS.reduce((m, t) => m * (save.trialsCleared[t.id] && t.reward[key] ? t.reward[key] : 1), 1);
+    const m = TRIALS.reduce((acc, t) => acc * (save.trialsCleared[t.id] && t.reward[key] ? t.reward[key] : 1), 1);
+    return key === "dmgMult" ? m * trialComboMult() : m;
   }
   function trialsClearedCount() { return TRIALS.filter((t) => save.trialsCleared[t.id]).length; }
   const PANEL_TRIAL_CHAIN = { id: "panelTrial", label: "苦難の門", baseCost: 5000, costMult: 20, maxLevel: TRIAL_LEVEL_NAMES.length, angle: panelSpokeAngle(9) };
@@ -910,15 +929,8 @@
   function maxStat(key, value) { if (Number.isFinite(value) && value > stat(key)) save.stats[key] = value; }
   // the biggest single hit is a Decimal, kept apart from the plain-number counters
   function maxHit() { return save.stats.maxHit instanceof Decimal ? save.stats.maxHit : toDecimal(save.stats.maxHit); }
-  function recordHit(dmg) {
-    if (dmg.gt(maxHit())) save.stats.maxHit = dmg;
-    const idx = unitIndexFor(dmg);
-    if (idx > (save.unitReached == null ? -1 : save.unitReached)) {
-      save.unitReached = idx;
-      showUnitStamp(JP_UNITS[idx]);
-    }
-  }
-  // 日本の命数法 (+ グーゴル and the old 1.8E+308 ceiling): one hit reaching a new 位 slams it on screen
+  function recordHit(dmg) { if (dmg.gt(maxHit())) save.stats.maxHit = dmg; }
+  // 日本の命数法 (+ グーゴル and the old 1.8E+308 ceiling), used to write big HP values as 1,440万 etc.
   const JP_UNITS = [
     { e: 4, name: "万", read: "まん" }, { e: 8, name: "億", read: "おく" }, { e: 12, name: "兆", read: "ちょう" },
     { e: 16, name: "京", read: "けい" }, { e: 20, name: "垓", read: "がい" }, { e: 24, name: "秭", read: "じょ" },
@@ -945,23 +957,6 @@
     else if (q.lt(1e4)) qs = Math.floor(q.toNumber()).toLocaleString("ja-JP");
     else qs = fmt(q);
     return qs + unit.name;
-  }
-  let stampTimer = null;
-  function showUnitStamp(unit) {
-    document.querySelectorAll(".unit-stamp").forEach((s) => s.remove());
-    clearTimeout(stampTimer);
-    const s = document.createElement("div");
-    s.className = "unit-stamp" + (unit.name.length > 2 ? " long" : "");
-    const big = document.createElement("div");
-    big.className = "unit-stamp-name";
-    big.textContent = unit.name;
-    const sub = document.createElement("div");
-    sub.className = "unit-stamp-sub";
-    sub.textContent = `一撃が「${unit.name}（${unit.read}）」の位に到達！ 10の${unit.e}乗`;
-    s.appendChild(big);
-    s.appendChild(sub);
-    document.body.appendChild(s);
-    stampTimer = setTimeout(() => s.remove(), 1600);
   }
   // every 10F mid-boss (死の賭博師) has its own entry; floor10/floor50 keep their old ids so saves that
   // already earned them stay earned
@@ -993,6 +988,40 @@
     { id: "reinc5", name: "輪廻の旅人", desc: "5回転生する", test: () => stat("reincarnations") >= 5, bonus: { soulPct: 20 } },
     { id: "remnant1", name: "残滓の主", desc: "残滓を召喚する", test: () => remnantCount() >= 1, bonus: { atkPct: 10 } },
     { id: "remnant6", name: "残滓の軍勢", desc: "残滓を6体召喚する", test: () => remnantCount() >= 6, bonus: { atkPct: 30 } },
+    // ---- progress milestones ----
+    { id: "floor300", name: "雲上の回廊", desc: "300階をクリアする", test: () => stat("maxCleared") >= 300, bonus: { atkPct: 50 } },
+    { id: "floor500", name: "天穹の踏破者", desc: "500階をクリアする", test: () => stat("maxCleared") >= 500, bonus: { expPct: 50 } },
+    { id: "floor1000", name: "千階の覇者", desc: "1000階をクリアする", test: () => stat("maxCleared") >= 1000, bonus: { atkPct: 100 } },
+    { id: "floor3000", name: "星界の旅人", desc: "3000階をクリアする", test: () => stat("maxCleared") >= 3000, bonus: { soulPct: 100 } },
+    { id: "floor10000", name: "万階の塔主", desc: "10000階をクリアする", test: () => stat("maxCleared") >= 10000, bonus: { atkPct: 300 } },
+    { id: "hit1e20", name: "一撃一垓", desc: "1回で1垓（1E+20）ダメージを与える", test: () => maxHit().gte(1e20), bonus: { atkPct: 40 } },
+    { id: "hit1e50", name: "天文学的一撃", desc: "1回で1E+50ダメージを与える", test: () => maxHit().gte(1e50), bonus: { atkPct: 60 } },
+    { id: "hit1e68", name: "無量大数", desc: "1回で1無量大数（1E+68）ダメージを与える", test: () => maxHit().gte(1e68), bonus: { atkPct: 100 } },
+    { id: "hit1e100", name: "グーゴルの一撃", desc: "1回で1グーゴル（1E+100）ダメージを与える", test: () => maxHit().gte(1e100), bonus: { atkPct: 150 } },
+    { id: "hit1e308", name: "無限突破", desc: "1回で1E+308を超えるダメージを与える", test: () => maxHit().gte(Decimal.pow(10, 308)), bonus: { atkPct: 200 } },
+    { id: "hit1e1000", name: "千桁の一撃", desc: "1回で1E+1000ダメージを与える", test: () => maxHit().gte(Decimal.pow(10, 1000)), bonus: { atkPct: 300 } },
+    { id: "lv200", name: "達人", desc: "レベル200に到達する", test: () => save.level >= 200, bonus: { expPct: 30 } },
+    { id: "lv500", name: "英雄", desc: "レベル500に到達する", test: () => save.level >= 500, bonus: { expPct: 50 } },
+    { id: "lv1000", name: "伝説", desc: "レベル1000に到達する", test: () => save.level >= 1000, bonus: { atkPct: 100 } },
+    { id: "lv3000", name: "神話", desc: "レベル3000に到達する", test: () => save.level >= 3000, bonus: { atkPct: 200 } },
+    { id: "kills5000", name: "五千の討伐", desc: "敵を合計5000体倒す", test: () => stat("kills") >= 5000, bonus: { soulPct: 30 } },
+    { id: "kills20000", name: "二万の討伐", desc: "敵を合計20000体倒す", test: () => stat("kills") >= 20000, bonus: { soulPct: 50 } },
+    { id: "kills100000", name: "十万の討伐", desc: "敵を合計100000体倒す", test: () => stat("kills") >= 100000, bonus: { soulPct: 100 } },
+    { id: "runs50", name: "常連", desc: "塔に50回挑む", test: () => stat("runs") >= 50, bonus: { goldPct: 50 } },
+    { id: "runs200", name: "塔の住人", desc: "塔に200回挑む", test: () => stat("runs") >= 200, bonus: { goldPct: 100 } },
+    { id: "reinc10", name: "輪廻の巡礼者", desc: "10回転生する", test: () => stat("reincarnations") >= 10, bonus: { soulPct: 30 } },
+    { id: "reinc25", name: "輪廻の覇者", desc: "25回転生する", test: () => stat("reincarnations") >= 25, bonus: { atkPct: 100 } },
+    { id: "reinc50", name: "永劫回帰", desc: "50回転生する", test: () => stat("reincarnations") >= 50, bonus: { atkPct: 200 } },
+    { id: "remnant3", name: "残滓の小隊", desc: "残滓を3体召喚する", test: () => remnantCount() >= 3, bonus: { atkPct: 15 } },
+    { id: "remnantTree30", name: "残滓の研鑽", desc: "残滓スキルツリーを合計30段習得する", test: () => Object.keys(save.remnantTree).length >= 30, bonus: { atkPct: 30 } },
+    { id: "remnantTree120", name: "残滓の極み", desc: "残滓スキルツリーを全段習得する", test: () => Object.keys(save.remnantTree).length >= 120, bonus: { atkPct: 200 } },
+    { id: "crit20", name: "会心の奔流", desc: "1回の挑戦中に会心を20回連続で出す", test: () => stat("maxCritStreak") >= 20, bonus: { critDmg: 100 } },
+    { id: "crit50", name: "必中必殺", desc: "1回の挑戦中に会心を50回連続で出す", test: () => stat("maxCritStreak") >= 50, bonus: { critDmg: 200 } },
+    { id: "ext10", name: "魂の修練", desc: "拡張強化のどれかをLv.10にする", test: () => Math.max(0, ...Object.values(save.treeExt)) >= 10, bonus: { soulPct: 20 } },
+    { id: "ext30", name: "魂の極地", desc: "拡張強化のどれかをLv.30にする", test: () => Math.max(0, ...Object.values(save.treeExt)) >= 30, bonus: { atkPct: 50 } },
+    { id: "deck30", name: "大所帯", desc: "カードを合計30枚所持する", test: () => save.deckDefs.reduce((n, d) => n + d.count, 0) >= 30, bonus: { goldPct: 30 } },
+    { id: "souls1e6", name: "ソウルの泉", desc: "ソウルを100万貯める", test: () => save.points >= 1e6, bonus: { soulPct: 20 } },
+    { id: "transcend1e7", name: "転生の蓄え", desc: "転生ポイントを1000万貯める", test: () => save.transcendPoints >= 1e7, bonus: { expPct: 30 } },
     { id: "trialStart", name: "苦難への一歩", desc: "苦難に挑む", test: () => stat("trialsStarted") >= 1, bonus: { soulPct: 10 } },
     { id: "trial1", name: "苦難を越えし者", desc: "苦難を1つ乗り越える", test: () => trialsClearedCount() >= 1, bonus: { atkPct: 20 } },
     { id: "trial3", name: "苦難の求道者", desc: "苦難を3つ乗り越える", test: () => trialsClearedCount() >= 3, bonus: { expPct: 30 } },
@@ -1001,6 +1030,16 @@
     { id: "trialAll", name: "万難を排す", desc: "全ての苦難を乗り越える", test: () => trialsClearedCount() >= TRIALS.length, bonus: { atkPct: 100 } },
     // hidden: 5907F is the first floor whose HP passes 1.8E+308 (the old Infinity wall)
     { id: "beyondInfinity", name: "無限の彼方", desc: "5907階をクリアする（敵のHPが1.8E+308を超える最初の階）", hidden: true, test: () => stat("maxCleared") >= 5907, bonus: { atkPct: 100 } },
+    { id: "trialCombo2", name: "二重の苦難", desc: "苦難を2つ同時に乗り越える", test: () => (save.trialComboBest || 0) >= 2, bonus: { atkPct: 30 } },
+    { id: "trialCombo4", name: "四重の苦難", desc: "苦難を4つ同時に乗り越える", test: () => (save.trialComboBest || 0) >= 4, bonus: { atkPct: 80 } },
+    { id: "trialCombo8", name: "八重の苦難", desc: "苦難を8つ同時に乗り越える", test: () => (save.trialComboBest || 0) >= 8, bonus: { atkPct: 300 } },
+    { id: "trial8", name: "苦難の巡礼者", desc: "苦難を8つ乗り越える", test: () => trialsClearedCount() >= 8, bonus: { expPct: 50 } },
+    { id: "trial16", name: "苦難の覇者", desc: "苦難を16個乗り越える", test: () => trialsClearedCount() >= 16, bonus: { atkPct: 100 } },
+    { id: "ach20", name: "実績コレクター", desc: "実績を20個達成する", test: () => Object.keys(save.achievements).length >= 20, bonus: { atkPct: 20 } },
+    { id: "ach50", name: "実績マスター", desc: "実績を50個達成する", test: () => Object.keys(save.achievements).length >= 50, bonus: { atkPct: 100 } },
+    { id: "lastMove", name: "背水の陣", desc: "最後の1手で敵を倒す", hidden: true, test: () => stat("lastMoveWins") >= 1, bonus: { critDmg: 30 } },
+    { id: "bossOneShot", name: "一刀両断", desc: "ラスボスを1手で倒す", hidden: true, test: () => stat("bossOneShot") >= 1, bonus: { atkPct: 50 } },
+    { id: "idle8h", name: "眠れる塔", desc: "8時間分の放置収入を一度に受け取る", hidden: true, test: () => stat("maxIdleMinutes") >= 480, bonus: { soulPct: 20 } },
     // hidden: the only tampering a browser game can actually observe is the clock jumping backwards
     { id: "timeTraveler", name: "時を遡る者", desc: "端末の時計を過去に戻す", hidden: true, test: () => stat("clockRollback") >= 1, bonus: { soulPct: 10 } },
   ]);
@@ -1135,6 +1174,7 @@
     const rate = idleRatePerMinute();
     if (!grant || !rate || elapsed <= 0) { persistSave(); return null; }
     const minutes = Math.min(elapsed, idleCapMs()) / 60000;
+    maxStat("maxIdleMinutes", minutes);
     const exp = rate.exp.mul(minutes);
     const levels = gainExp(exp);
     const souls = grantSouls(rate.souls * minutes);
@@ -1188,6 +1228,7 @@
     game.enemyHpMax = enemyHpForFloor(floor);
     game.enemyHp = game.enemyHpMax;
     game.n = currentStartN();
+    game.floorStartN = game.n;
     game.buffBonus = 0;
     game.enemyPoisoned = false; // a fresh enemy each floor, never carries poison over
     game.critStreak = 0;
@@ -1319,6 +1360,13 @@
     trialClearedLabel: document.getElementById("trialClearedLabel"),
     trialBackBtn: document.getElementById("trialBackBtn"),
     trialSkipBtn: document.getElementById("trialSkipBtn"),
+    menuDescTitle: document.getElementById("menuDescTitle"),
+    menuDescText: document.getElementById("menuDescText"),
+    trialStartBtn: document.getElementById("trialStartBtn"),
+    trialSelection: document.getElementById("trialSelection"),
+    trialCombo: document.getElementById("trialCombo"),
+    homeSealed: document.getElementById("homeSealed"),
+    homeSealedGrid: document.getElementById("homeSealedGrid"),
     trialBanner: document.getElementById("trialBanner"),
     trialBannerText: document.getElementById("trialBannerText"),
     abandonTrialBtn: document.getElementById("abandonTrialBtn"),
@@ -1375,21 +1423,21 @@
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     document.getElementById("screen-" + name).classList.add("active");
-    document.body.classList.toggle("home-bg", name === "home");
+    document.body.classList.toggle("title-bg", name === "home");
   }
 
   const E_NOTATION_THRESHOLD = 1e9; // below this, plain comma-separated numbers; at/above, "+E" notation
   function fmt(n) {
     if (n instanceof Decimal) {
       if (n.abs().lt(E_NOTATION_THRESHOLD)) return fmt(n.toNumber());
-      // "1.23e+1234" -> "1.23E+1234"; very long exponents get digit grouping (the glyph set has ",")
+      // "1.23e+1234" -> "1.23E1234" (no "+"); very long exponents get digit grouping (the glyph set has ",")
       const [mant, exp] = n.toExponential(2).split("e");
       const e = Number(exp);
-      return mant + "E" + (e < 0 ? "-" : "+") + (Math.abs(e) >= 1e4 ? Math.abs(e).toLocaleString("ja-JP") : Math.abs(e));
+      return mant + "E" + (e < 0 ? "-" : "") + (Math.abs(e) >= 1e4 ? Math.abs(e).toLocaleString("ja-JP") : Math.abs(e));
     }
     const rounded = Math.round(n);
     if (Math.abs(rounded) >= E_NOTATION_THRESHOLD) {
-      return rounded.toExponential(2).replace("e+", "E+").replace("e-", "E-");
+      return rounded.toExponential(2).replace("e+", "E").replace("e-", "E-");
     }
     return rounded.toLocaleString("ja-JP");
   }
@@ -1736,6 +1784,8 @@
     game.floorPointsSum += game.floor;
     save.bestClearedFloor = Math.max(save.bestClearedFloor, game.floor);
     bumpStat("kills");
+    if (game.n === 0) bumpStat("lastMoveWins");
+    if (game.floor === FINAL_FLOOR && game.floorStartN - game.n === 1) bumpStat("bossOneShot");
     maxStat("maxCleared", game.floor);
     if (game.floor === FINAL_FLOOR) bumpStat("bossKills");
     // transcend points no longer come from endless floors: they're paid out on reincarnation from
@@ -1746,7 +1796,7 @@
     checkAchievements();
 
     el.trialClearNote.textContent = "";
-    if (game.floor === FINAL_FLOOR && save.activeTrial) completeTrial();
+    if (game.floor === FINAL_FLOOR && save.activeTrials.length) completeTrial();
 
     if (game.floor === FINAL_FLOOR && !game.endlessMode) {
       // first time reaching the final boss this run: offer the endless-mode choice.
@@ -1770,15 +1820,21 @@
 
   // the seal lifts the moment the boss falls, so the rest of the run (endless included) is at full power
   function completeTrial() {
-    const t = activeTrialDef();
-    save.activeTrial = null;
-    if (!t) return;
-    const first = !save.trialsCleared[t.id];
-    save.trialsCleared[t.id] = true;
+    const defs = activeTrialDefs();
+    save.activeTrials = [];
+    if (!defs.length) return;
+    const fresh = defs.filter((t) => !save.trialsCleared[t.id]);
+    defs.forEach((t) => { save.trialsCleared[t.id] = true; });
+    const lines = [`苦難（${defs.map((t) => t.name).join("・")}）を乗り越えた！`];
+    if (fresh.length) lines.push("永続報酬：" + fresh.map((t) => t.rewardText).join("／"));
+    else lines.push("（報酬は獲得済み）");
+    if (defs.length >= 2 && defs.length > (save.trialComboBest || 0)) {
+      const from = (save.trialComboBest || 1) + 1;
+      save.trialComboBest = defs.length;
+      lines.push(`同時挑戦ボーナス：全ダメージ ×${Array.from({ length: defs.length - from + 1 }, (_, i) => from + i).reduce((a, b) => a * b, 1)}`);
+    }
     checkAchievements();
-    const text = first
-      ? `苦難「${t.name}」を乗り越えた！ 永続報酬：${t.rewardText}`
-      : `苦難「${t.name}」を再び乗り越えた（報酬は獲得済み）`;
+    const text = lines.join(" ");
     addLog(text, "levelup");
     showToast(text);
     el.trialClearNote.textContent = text;
@@ -1832,7 +1888,7 @@
   // transcend points, achievements and everything remnant-related survive.
   function reincarnateNow() {
     save.transcendPoints += transcendGainForLevel(save.level);
-    save.activeTrial = null; // an unfinished 苦難 ends with the loop
+    save.activeTrials = []; // unfinished 苦難 end with the loop
     save.trialPending = true; // leaving the panel offers the 苦難 screen (if any are unlocked)
     save.level = 1;
     save.exp = new Decimal(0);
@@ -2159,13 +2215,14 @@
   function renderBattle() {
     const enemy = enemyForFloor(game.floor);
     el.floorLabel.textContent = (game.floor > FINAL_FLOOR ? `階層 ${game.floor}（エンドレス）` : `階層 ${game.floor} / ${FINAL_FLOOR}`) + `　Lv.${save.level}`
-      + (activeTrialDef() ? `　苦難：${activeTrialDef().name}` : "");
+      + (trialSealed() ? `　苦難：${activeTrialDefs().length > 1 ? activeTrialDefs().length + "つ同時" : activeTrialDefs()[0].name}` : "");
     el.enemyName.textContent = enemy.name;
     el.enemyName.classList.toggle("boss", enemy.isBoss);
     el.enemyBar.classList.toggle("boss", enemy.isBoss);
     el.enemyVisual.classList.toggle("boss", enemy.isBoss);
-    // every floor (bosses included, now that their art is transparent too) shows the dungeon backdrop
-    el.enemyVisual.classList.add("has-backdrop");
+    // regular floors show the dungeon backdrop; boss floors keep a plain black one for a more dramatic look
+    el.enemyVisual.classList.toggle("has-backdrop", !enemy.isBoss);
+    el.enemyVisual.classList.toggle("boss-bg", enemy.isBoss);
     if (el.enemyVisual.dataset.art !== enemy.art) {
       el.enemyVisual.dataset.art = enemy.art;
       el.enemyVisual.innerHTML = `<img src="${enemy.art}" alt="${enemy.name}">`;
@@ -2319,19 +2376,26 @@
     el.homeTranscendStat.style.display = save.transcendUnlocked ? "inline" : "none";
     el.homeTranscendLabel.textContent = fmt(save.transcendPoints);
     el.openPanelBtn.style.display = save.transcendUnlocked ? "block" : "none";
-    el.openPanelPreviewBtn.style.display = save.transcendUnlocked ? "block" : "none";
+    el.openPanelPreviewBtn.style.display = save.transcendUnlocked && !trialSealed() ? "block" : "none";
     el.openCardShopBtn.style.display = cardShopUnlocked() ? "block" : "none";
-    const trial = activeTrialDef();
-    el.trialBanner.style.display = trial ? "" : "none";
-    if (trial) el.trialBannerText.textContent = `苦難に挑戦中：${trial.name}（${"★".repeat(trial.stars)}）　ラスボスを倒すと「${trial.rewardText}」`;
+    const trials = activeTrialDefs();
+    el.trialBanner.style.display = trials.length ? "" : "none";
+    if (trials.length) {
+      el.trialBannerText.textContent = `苦難に挑戦中：${trials.map((t) => `${t.name}（${"★".repeat(t.stars)}）`).join("・")}　`
+        + `制限：${trialRuleTexts(trials).slice(1).join("／")}`;
+    }
+    renderHomeSeals();
     // once a remnant exists, 基本強化+デッキ強化 merge into one tabbed プレイヤー強化 and the
-    // デッキ強化 slot becomes 残滓強化
-    const hasRemnants = remnantCount() > 0;
+    // デッキ強化 slot becomes 残滓強化 (during a 苦難 the remnants are sealed, so it goes back to デッキ強化)
+    const hasRemnants = activeRemnantCount() > 0;
     el.openTreeBtn.textContent = hasRemnants ? "プレイヤー強化" : "基本強化を見る";
     const canBuy = NODES.some((n) => nodeState(n) === "available");
     el.openTreeBtn.classList.toggle("pulse", canBuy);
     if (canBuy) el.openTreeBtn.insertAdjacentHTML("beforeend", `<span class="btn-badge">習得可能</span>`);
     el.openDeckUpgradeBtn.textContent = hasRemnants ? "残滓強化" : "デッキ強化を見る";
+    const remnantBuyable = hasRemnants && remnantAffordable();
+    el.openDeckUpgradeBtn.classList.toggle("pulse", remnantBuyable);
+    if (remnantBuyable) el.openDeckUpgradeBtn.insertAdjacentHTML("beforeend", `<span class="btn-badge">強化可能</span>`);
   }
 
   // tabs appear only once remnants exist; each tab just switches to its own existing screen
@@ -2341,7 +2405,7 @@
   };
   // the player tabs also appear (without remnants) once 魂の拡張 has added the 拡張強化 tab
   function tabVisible(screen) { return screen !== "treeExt" || treeExtUnlocked().length > 0; }
-  function tabGroupVisible(group) { return remnantCount() > 0 || (group === "player" && treeExtUnlocked().length > 0); }
+  function tabGroupVisible(group) { return activeRemnantCount() > 0 || (group === "player" && treeExtUnlocked().length > 0); }
   function openScreen(name) {
     showScreen(name);
     if (name === "tree") { renderTree(); centerTreeOnRoot(); }
@@ -2393,25 +2457,62 @@
     });
   }
 
+  // the achievements screen groups entries by what they reward you for; hidden ones get their own group
+  const ACHIEVEMENT_GROUPS = [
+    ["tower", "塔の踏破", (a) => /^(floor|boss)\d/.test(a.id)],
+    ["hit", "一撃のダメージ", (a) => a.id.startsWith("hit")],
+    ["level", "レベル", (a) => /^lv\d/.test(a.id)],
+    ["count", "討伐・挑戦", (a) => a.id.startsWith("kills") || a.id.startsWith("runs")],
+    ["crit", "会心", (a) => a.id.startsWith("crit")],
+    ["reinc", "転生・残滓", (a) => a.id.startsWith("reinc") || a.id.startsWith("remnant")],
+    ["trial", "苦難", (a) => a.id.startsWith("trial")],
+    ["growth", "強化・蓄え", (a) => /^(ext|deck|souls|transcend)/.test(a.id)],
+    ["meta", "実績", (a) => a.id.startsWith("ach")],
+  ];
+  function achievementGroupOf(a) {
+    if (a.hidden) return "hidden";
+    const g = ACHIEVEMENT_GROUPS.find(([, , test]) => test(a));
+    return g ? g[0] : "meta";
+  }
   function renderAchievements() {
     const done = ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length;
     el.achievementsCountLabel.textContent = `${done} / ${ACHIEVEMENTS.length}`;
     const totals = Object.keys(ACHIEVEMENT_BONUS_LABELS).map((k) => [k, achievementBonus(k)]).filter(([, v]) => v > 0);
-    el.achievementsTotal.textContent = totals.length ? "現在の効果：" + totals.map(([k, v]) => `${ACHIEVEMENT_BONUS_LABELS[k]}+${v}%`).join("・") : "現在の効果：なし";
+    el.achievementsTotal.innerHTML = "";
+    const bar = document.createElement("div");
+    bar.className = "ach-progress";
+    bar.innerHTML = `<div class="ach-progress-fill" style="width:${(done / ACHIEVEMENTS.length) * 100}%"></div>`;
+    el.achievementsTotal.appendChild(bar);
+    const chips = document.createElement("div");
+    chips.className = "ach-total-chips";
+    chips.innerHTML = totals.length
+      ? totals.map(([k, v]) => `<span class="ach-chip">${ACHIEVEMENT_BONUS_LABELS[k]} +${fmt(v)}%</span>`).join("")
+      : `<span class="ach-chip dim">まだ効果はない</span>`;
+    el.achievementsTotal.appendChild(chips);
+
     el.achievementsList.innerHTML = "";
-    ACHIEVEMENTS.forEach((a) => {
-      const got = !!save.achievements[a.id];
-      const secret = a.hidden && !got;
-      const row = document.createElement("div");
-      row.className = "ach-row" + (got ? " done" : "");
-      row.innerHTML = `
-        <div class="ach-info">
-          <div class="ach-name">${secret ? "？？？" : a.name}</div>
-          <div class="ach-desc">${secret ? "隠し実績" : a.desc}</div>
-        </div>
-        <div class="ach-reward">${secret ? "？？？" : bonusText(a.bonus)}</div>
-        <div class="ach-state">${got ? "達成" : "未達成"}</div>`;
-      el.achievementsList.appendChild(row);
+    ACHIEVEMENT_GROUPS.concat([["hidden", "隠し実績"]]).forEach(([key, label]) => {
+      const list = ACHIEVEMENTS.filter((a) => achievementGroupOf(a) === key);
+      if (!list.length) return;
+      const got = list.filter((a) => save.achievements[a.id]).length;
+      const sec = document.createElement("section");
+      sec.className = "ach-group";
+      sec.innerHTML = `<div class="ach-group-head"><span class="ach-group-name">${label}</span><span class="ach-group-count">${got} / ${list.length}</span></div>`;
+      const grid = document.createElement("div");
+      grid.className = "ach-grid";
+      list.forEach((a) => {
+        const have = !!save.achievements[a.id];
+        const secret = a.hidden && !have;
+        const card = document.createElement("div");
+        card.className = "ach-card" + (have ? " done" : "") + (secret ? " secret" : "");
+        card.innerHTML = `
+          <div class="ach-card-top"><span class="ach-mark">${have ? "✦" : "◇"}</span><span class="ach-name">${secret ? "？？？" : a.name}</span></div>
+          <div class="ach-desc">${secret ? "条件は秘密" : a.desc}</div>
+          <div class="ach-reward">${secret ? "？？？" : bonusText(a.bonus)}</div>`;
+        grid.appendChild(card);
+      });
+      sec.appendChild(grid);
+      el.achievementsList.appendChild(sec);
     });
   }
 
@@ -2453,6 +2554,12 @@
     });
   }
 
+  // anything on the 残滓 screens payable with the transcend points on hand (a card rank-up or a tree step)
+  function remnantAffordable() {
+    ensureRemnantDecks();
+    const rankUp = save.remnantDecks.slice(0, remnantCount()).some((deck) => deck.some((def) => save.transcendPoints >= remnantRankCost(def)));
+    return rankUp || REMNANT_TREE_BRANCHES.some((b) => b.nodes.some((n) => remnantNodeState(n) === "available"));
+  }
   function remnantNodeState(node) {
     if (save.remnantTree[node.id]) return "unlocked";
     if (node.requires && !save.remnantTree[node.requires]) return "locked";
@@ -2507,8 +2614,20 @@
     showScreen("trial");
     renderTrials();
   }
+  let trialSelection = []; // ids picked on the 苦難 screen, at most one per direction
   function renderTrials() {
     el.trialClearedLabel.textContent = `${trialsClearedCount()} / ${TRIALS.length}`;
+    trialSelection = trialSelection.filter((id) => { const t = TRIALS.find((x) => x.id === id); return t && trialOpen(t); });
+    const picked = trialSelection.map((id) => TRIALS.find((t) => t.id === id));
+    // the sticky bar: what's picked, all of it combined, and the two ways forward
+    el.trialSelection.innerHTML = picked.length
+      ? `<b>${picked.length}つ選択中</b>：${picked.map((t) => t.name).join("・")}<div class="trial-selection-rules">${trialRuleTexts(picked).slice(1).join("／")}</div>`
+      : "挑む苦難を選んでいない（複数選べる。各方向1段階まで）";
+    el.trialStartBtn.disabled = !picked.length;
+    el.trialStartBtn.textContent = picked.length ? `選んだ${picked.length}つの苦難に挑む` : "選んだ苦難に挑む";
+    const best = save.trialComboBest || 0;
+    el.trialCombo.innerHTML = "同時挑戦ボーナス（初めてその数を同時に越えたとき）："
+      + [2, 3, 4, 5, 6, 7, 8].map((k) => `<span class="${k <= best ? "got" : ""}">${k}つ→全ダメージ×${k}</span>`).join("");
     el.trialList.innerHTML = "";
     TRIAL_CATEGORIES.forEach((cat) => {
       const group = document.createElement("div");
@@ -2522,52 +2641,80 @@
       TRIALS.filter((t) => t.cat === cat).forEach((t) => {
         const open = trialOpen(t);
         const cleared = !!save.trialsCleared[t.id];
+        const selected = trialSelection.includes(t.id);
         const card = document.createElement("div");
-        card.className = "trial-card" + (open ? "" : " locked") + (cleared ? " cleared" : "");
+        card.className = "trial-card" + (open ? "" : " locked") + (cleared ? " cleared" : "") + (selected ? " selected" : "");
+        const lockText = t.level > trialsUnlockedCount() ? `苦難の門 ${t.level}段目で解放` : `「${TRIAL_LEVEL_NAMES[t.level - 2]}」を越えると解放`;
         card.innerHTML = `
           <div class="trial-head"><span class="trial-name">${t.name}</span><span class="trial-stars">${"★".repeat(t.stars)}</span></div>
           <ul class="trial-rules">${trialRuleTexts(t).slice(1).map((r) => `<li>${r}</li>`).join("")}</ul>
-          <div class="trial-reward">報酬：${t.rewardText}</div>
-          <div class="trial-state">${cleared ? "乗り越えた" : ""}</div>`;
-        const btn = document.createElement("button");
-        btn.className = "btn " + (open ? "primary" : "ghost");
-        btn.disabled = !open;
-        btn.textContent = open ? "挑む"
-          : t.level > trialsUnlockedCount() ? `苦難の門 ${t.level}段目で解放`
-          : `「${TRIAL_LEVEL_NAMES[t.level - 2]}」を越えると解放`;
-        if (open) btn.addEventListener("click", () => startTrial(t));
-        card.appendChild(btn);
+          <div class="trial-foot">
+            <span class="trial-reward">報酬：${t.rewardText}${cleared ? "（獲得済み）" : ""}</span>
+            <span class="trial-pick">${!open ? lockText : selected ? "✔ 選択中" : "選ぶ"}</span>
+          </div>`;
+        if (open) {
+          card.addEventListener("click", () => {
+            trialSelection = trialSelection.filter((id) => !id.startsWith(cat.id));
+            if (!selected) trialSelection.push(t.id);
+            renderTrials();
+          });
+        }
         row.appendChild(card);
       });
       group.appendChild(row);
       el.trialList.appendChild(group);
     });
   }
-  function startTrial(t) {
-    save.activeTrial = t.id;
+  function startTrials(ids) {
+    save.activeTrials = ids.slice();
     save.trialPending = false;
-    save.points = 0; // the souls 継承の礎 just granted come from the panel, which this 苦難 seals
+    save.points = 0; // the souls 継承の礎 just granted come from the panel, which a 苦難 seals
     bumpStat("trialsStarted");
+    trialSelection = [];
     checkAchievements();
     persistSave();
     showScreen("home");
     renderHome();
   }
+  el.trialStartBtn.addEventListener("click", () => { if (trialSelection.length) startTrials(trialSelection); });
   el.trialBackBtn.addEventListener("click", () => openPanel(false));
   el.trialSkipBtn.addEventListener("click", () => {
     save.trialPending = false;
+    trialSelection = [];
     persistSave();
     showScreen("home");
     renderHome();
   });
   el.abandonTrialBtn.addEventListener("click", async () => {
-    const t = activeTrialDef();
-    if (!t) return;
-    if (!(await showConfirm(`苦難「${t.name}」を放棄します。報酬は得られず、転生パネルの封印が解けます。よろしいですか?`))) return;
-    save.activeTrial = null;
+    const defs = activeTrialDefs();
+    if (!defs.length) return;
+    if (!(await showConfirm(`苦難（${defs.map((t) => t.name).join("・")}）を放棄します。報酬は得られず、転生パネルの封印が解けます。よろしいですか?`))) return;
+    save.activeTrials = [];
     persistSave();
     renderHome();
   });
+
+  // during a 苦難 the panel-given features show as sealed plates (like the festival build's teasers)
+  const SEAL_TEXT = "苦難の間は封印されている。苦難を放棄するか、ラスボスを倒すと封印が解ける。";
+  function renderHomeSeals() {
+    const sealed = [];
+    if (trialSealed()) {
+      if (save.transcendUnlocked) sealed.push("転生パネル");
+      if (remnantCount() > 0) sealed.push("残滓");
+      if (panelLevel(PANEL_SHOP_CHAIN) > 0) sealed.push("カードショップ");
+      if (panelLevel(PANEL_TREE_EXT_CHAIN) > 0) sealed.push("拡張強化");
+    }
+    el.homeSealed.style.display = sealed.length ? "" : "none";
+    el.homeSealedGrid.innerHTML = "";
+    sealed.forEach((name) => {
+      const b = document.createElement("button");
+      b.className = "sealed-tile";
+      b.innerHTML = `<span class="seal-stamp small">封</span><span class="sealed-name"></span>`;
+      b.querySelector(".sealed-name").textContent = name;
+      b.addEventListener("click", () => showToast(`「${name}」は${SEAL_TEXT}`));
+      el.homeSealedGrid.appendChild(b);
+    });
+  }
 
   function showIdleReport(result) {
     if (!result || result.minutes < 1) return; // a quick reload isn't worth a notice
@@ -2588,7 +2735,7 @@
   el.floorSelectBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
   el.openTreeBtn.addEventListener("click", () => openScreen("tree"));
   el.treeBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
-  el.openDeckUpgradeBtn.addEventListener("click", () => openScreen(remnantCount() > 0 ? "remnants" : "deckUpgrade"));
+  el.openDeckUpgradeBtn.addEventListener("click", () => openScreen(activeRemnantCount() > 0 ? "remnants" : "deckUpgrade"));
   el.deckUpgradeBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
   el.openAchievementsBtn.addEventListener("click", () => { showScreen("achievements"); renderAchievements(); });
   el.achievementsBackBtn.addEventListener("click", () => { showScreen("home"); renderHome(); });
@@ -2619,7 +2766,7 @@
       "【引き継がれるもの】\n" +
       `・転生ポイント（${fmt(save.transcendPoints)}）\n` +
       "・転生パネルの強化・実績・残滓・乗り越えた苦難の報酬\n\n" +
-      (activeTrialDef() ? `※挑戦中の苦難「${activeTrialDef().name}」は達成できないまま終わります。\n\n` : "") +
+      (trialSealed() ? `※挑戦中の苦難（${activeTrialDefs().map((t) => t.name).join("・")}）は達成できないまま終わります。\n\n` : "") +
       "元に戻せません。よろしいですか?";
     if (!(await showConfirm(message))) return;
     reincarnateNow();
@@ -2703,17 +2850,12 @@
       if (panelLevel(chain) >= i + 1) line.setAttribute("class", "active");
       svg.appendChild(line);
     }));
-    // magic-circle backdrop behind everything: one faint ring per row and the 12 slice borders
+    // magic-circle backdrop behind everything: a ring per row, the outer rune band, the stars, and the
+    // 12 slice borders
     const core = PANEL_POS.core;
+    drawMagicBackdrop(svg, core.x, core.y, Array.from({ length: panelRowCount }, (_, row) => PANEL_ROW_START + PANEL_ROW_STEP * row), "panel");
     const deco = document.createElementNS(svgNS, "g");
     deco.setAttribute("class", "panel-circle");
-    for (let row = 0; row < panelRowCount; row++) {
-      const ring = document.createElementNS(svgNS, "circle");
-      ring.setAttribute("cx", core.x);
-      ring.setAttribute("cy", core.y);
-      ring.setAttribute("r", PANEL_ROW_START + PANEL_ROW_STEP * row);
-      deco.appendChild(ring);
-    }
     const outer = PANEL_ROW_START + PANEL_ROW_STEP * (panelRowCount - 0.5);
     for (let i = 0; i < 360 / PANEL_SECTOR_DEG; i++) {
       const rad = ((panelSpokeAngle(i) + PANEL_SECTOR_DEG / 2) * Math.PI) / 180;
@@ -2731,7 +2873,7 @@
     coreDiv.className = "tree-map-node core";
     coreDiv.style.left = PANEL_POS.core.x + "px";
     coreDiv.style.top = PANEL_POS.core.y + "px";
-    coreDiv.innerHTML = `<div>核</div><div class="core-sub">次の周回へ</div>`;
+    coreDiv.innerHTML = EMBLEM_SVG + `<div>核</div><div class="core-sub">次の周回へ</div>`;
     coreDiv.addEventListener("click", leavePanel);
     el.panelMap.appendChild(coreDiv);
 
@@ -2996,8 +3138,8 @@
   // ---------------- Zooming the reincarnation panel (wheel on desktop, pinch on touch) ----------------
   const PANEL_ZOOM_MIN = 0.2;
   const PANEL_ZOOM_MAX = 1.5;
-  const PANEL_OPEN_ZOOM = 0.6; // the folded panel is compact enough to open showing most of the circle
-  const PANEL_OPEN_ZOOM_NARROW = 0.35; // phone width: open far enough out to see the core and its branches
+  const PANEL_OPEN_ZOOM = 1.3; // opens zoomed in on the core, the same way the basic tree opens on 起点
+  const PANEL_OPEN_ZOOM_NARROW = 0.7; // phone width: a little further out so the core's neighbors show too
   let panelZoom = 1;
 
   function applyPanelZoom() {
@@ -3050,6 +3192,57 @@
     return save.points >= node.cost ? "available" : "unaffordable";
   }
 
+  // a magic circle drawn behind a node map, centered on (cx, cy): the given rings (alternately solid and
+  // dotted), a slowly turning outer band of ticks and rune text, and a counter-turning hexagram + octagram.
+  // Purely decorative; the nodes keep their positions.
+  const MC_RUNES = "✦ MAGIA ✦ ARCANUM ✦ AETERNUM ✦ TURRIS ✦ STELLA ✦ LUMEN ✦ POTENTIA ✦ INFINITAS ";
+  function drawMagicBackdrop(svg, cx, cy, rings, idSuffix) {
+    const svgNS = "http://www.w3.org/2000/svg";
+    const mk = (tag, attrs) => {
+      const n = document.createElementNS(svgNS, tag);
+      Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+      return n;
+    };
+    const g = mk("g", { class: "mc-backdrop" });
+    rings.forEach((r, i) => g.appendChild(mk("circle", { cx, cy, r, class: i % 2 ? "dash" : "" })));
+    const outer = rings[rings.length - 1] + 80;
+    const rotor = mk("g", { class: "mc-rotor", style: `transform-origin: ${cx}px ${cy}px` });
+    rotor.appendChild(mk("circle", { cx, cy, r: outer }));
+    rotor.appendChild(mk("circle", { cx, cy, r: outer - 44, class: "thin" }));
+    for (let a = 0; a < 360; a += 4) {
+      const rad = (a * Math.PI) / 180;
+      const r1 = outer - (a % 20 === 0 ? 16 : 8);
+      rotor.appendChild(mk("line", { class: "tick", x1: cx + Math.cos(rad) * outer, y1: cy + Math.sin(rad) * outer, x2: cx + Math.cos(rad) * r1, y2: cy + Math.sin(rad) * r1 }));
+    }
+    const runeR = outer - 30;
+    const pathId = "mcRune-" + idSuffix;
+    rotor.appendChild(mk("path", { id: pathId, d: `M ${cx - runeR},${cy} a ${runeR},${runeR} 0 1,1 ${runeR * 2},0 a ${runeR},${runeR} 0 1,1 ${-runeR * 2},0`, fill: "none" }));
+    const text = mk("text", { class: "rune" });
+    const tp = mk("textPath", { href: "#" + pathId });
+    tp.textContent = MC_RUNES.repeat(Math.max(1, Math.ceil((2 * Math.PI * runeR) / (MC_RUNES.length * 15))));
+    text.appendChild(tp);
+    rotor.appendChild(text);
+    g.appendChild(rotor);
+    const star = mk("g", { class: "mc-rotor rev", style: `transform-origin: ${cx}px ${cy}px` });
+    const starR = rings[Math.min(1, rings.length - 1)];
+    const pts = (n, step, r, rot) => Array.from({ length: n }, (_, i) => {
+      const t = rot + (i * step * 2 * Math.PI) / n;
+      return `${cx + Math.cos(t) * r},${cy + Math.sin(t) * r}`;
+    }).join(" ");
+    star.appendChild(mk("polygon", { points: pts(3, 1, starR, -Math.PI / 2) }));
+    star.appendChild(mk("polygon", { points: pts(3, 1, starR, Math.PI / 2) }));
+    star.appendChild(mk("polygon", { class: "thin", points: pts(8, 3, rings[rings.length - 1], 0) }));
+    g.appendChild(star);
+    svg.insertBefore(g, svg.firstChild);
+  }
+  // the emblem drawn inside the tree's 起点 and the panel's 核
+  const EMBLEM_SVG = `<svg class="emblem-circle" viewBox="0 0 200 200" aria-hidden="true">
+    <circle cx="100" cy="100" r="96" /><circle cx="100" cy="100" r="86" class="thin" />
+    <polygon points="100,14 175,143 25,143" /><polygon points="100,186 25,57 175,57" />
+    <circle cx="100" cy="100" r="50" class="dash" /></svg>`;
+
+  // set when 起点 is bought: the next render plays the tree unfolding outward from it
+  let treeRevealPending = false;
   function renderTree() {
     el.treePointsLabel.textContent = fmt(save.points);
     el.treeMap.innerHTML = "";
@@ -3059,9 +3252,21 @@
     svg.setAttribute("class", "tree-map-svg");
     svg.setAttribute("viewBox", `0 0 ${TREE_CANVAS_WIDTH} ${TREE_CANVAS_HEIGHT}`);
 
+    // until 起点 is learned only it is shown: the rest of the tree unfolds out of it on purchase
+    const opened = !!save.unlockedNodes.root;
+    const reveal = treeRevealPending;
+    treeRevealPending = false;
+    const rootPos = TREE_POS.root;
+    const revealDelay = (pos) => (Math.hypot(pos.x - rootPos.x, pos.y - rootPos.y) / 1500 + 0.35).toFixed(2) + "s";
+    if (opened) {
+      const maxR = Math.max(...Object.values(TREE_POS).map((q) => Math.hypot(q.x - rootPos.x, q.y - rootPos.y)));
+      const rings = [150, 300];
+      for (let r = 440; r < maxR + 60; r += 140) rings.push(r);
+      drawMagicBackdrop(svg, rootPos.x, rootPos.y, rings, "tree");
+    }
     NODES.forEach((node) => {
       const fromId = node.requires || "root";
-      if (fromId === node.id) return; // the root node itself has no incoming line to draw
+      if (fromId === node.id || !opened) return; // the root node itself has no incoming line to draw
       const from = TREE_POS[fromId];
       const to = TREE_POS[node.id];
       const line = document.createElementNS(svgNS, "line");
@@ -3069,24 +3274,41 @@
       line.setAttribute("y1", from.y);
       line.setAttribute("x2", to.x);
       line.setAttribute("y2", to.y);
-      if (save.unlockedNodes[node.id]) line.setAttribute("class", "active");
+      const cls = [save.unlockedNodes[node.id] ? "active" : "", reveal ? "reveal" : ""].filter(Boolean).join(" ");
+      if (cls) line.setAttribute("class", cls);
+      if (reveal) line.style.setProperty("--rd", revealDelay(from));
       svg.appendChild(line);
     });
     el.treeMap.appendChild(svg);
 
     NODES.forEach((node) => {
+      const isRoot = node.id === "root";
+      if (!opened && !isRoot) return;
       const pos = TREE_POS[node.id];
       const state = nodeState(node);
       const div = document.createElement("div");
-      div.className = "tree-map-node " + state;
+      div.className = "tree-map-node " + state + (isRoot ? " root-node" : "") + (reveal && !isRoot ? " reveal" : "");
+      if (reveal && !isRoot) div.style.setProperty("--rd", revealDelay(pos));
       div.style.left = pos.x + "px";
       div.style.top = pos.y + "px";
       const costLabel = state === "unlocked" ? "習得済み" : `${node.cost}pt`;
-      div.innerHTML = `<div class="tn-name">${node.label}</div><div class="tn-desc">${node.desc}</div><div class="tn-cost">${costLabel}</div>`;
+      div.innerHTML = (isRoot ? EMBLEM_SVG : "") + `<div class="tn-name">${node.label}</div><div class="tn-desc">${node.desc}</div><div class="tn-cost">${costLabel}</div>`;
+      if (isRoot && !opened) {
+        const hint = document.createElement("div");
+        hint.className = "root-hint";
+        hint.style.left = pos.x + "px";
+        hint.style.top = (pos.y + 118) + "px";
+        hint.textContent = state === "available" ? "起点に触れて、基本強化の封印を解こう" : "塔に挑んでソウルを集め、起点を習得しよう（1pt）";
+        el.treeMap.appendChild(hint);
+      }
       if (state === "available") {
         div.addEventListener("click", () => {
           save.points -= node.cost;
           save.unlockedNodes[node.id] = true;
+          if (isRoot) {
+            treeRevealPending = true;
+            playRootBurst(pos);
+          }
           // startCards nodes grant their cards to the permanent deck once, right here at
           // purchase time (not re-applied every run), so they're real deck members that can
           // later be ranked up / deleted from the title-screen deck upgrade screen too.
@@ -3103,6 +3325,122 @@
       }
       el.treeMap.appendChild(div);
     });
+  }
+  // 起点 awakening: a flash and light rings racing outward, while the tree draws itself in behind them
+  function playRootBurst(pos) {
+    for (let i = 0; i < 3; i++) {
+      const ring = document.createElement("div");
+      ring.className = "root-burst";
+      ring.style.left = pos.x + "px";
+      ring.style.top = pos.y + "px";
+      ring.style.animationDelay = (i * 0.18) + "s";
+      el.treeMap.appendChild(ring);
+      setTimeout(() => ring.remove(), 1800);
+    }
+    const flash = document.createElement("div");
+    flash.className = "screen-flash flash-huge";
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 450);
+  }
+
+  // ---------------- Title: the staff ----------------
+  // light motes rising from the orb (size/drift/speed varied per mote), and a burst when it's clicked
+  const staffEl = document.getElementById("homeStaff");
+  const staffSparks = document.getElementById("staffSparks");
+  const rand = (a, b) => a + Math.random() * (b - a);
+  for (let i = 0; i < 24; i++) {
+    const s = document.createElement("i");
+    const t = rand(2.6, 4.8);
+    s.style.setProperty("--s", rand(3, 7).toFixed(1) + "px");
+    s.style.setProperty("--x", rand(-9, 9).toFixed(1) + "vh");
+    s.style.setProperty("--y", rand(-26, -9).toFixed(1) + "vh");
+    s.style.setProperty("--t", t.toFixed(2) + "s");
+    s.style.setProperty("--d", (-rand(0, t)).toFixed(2) + "s");
+    staffSparks.appendChild(s);
+  }
+  staffEl.addEventListener("click", () => {
+    staffEl.classList.remove("flash");
+    void staffEl.offsetWidth;
+    staffEl.classList.add("flash");
+    for (let i = 0; i < 26; i++) {
+      const s = document.createElement("i");
+      const angle = (i / 26) * Math.PI * 2 + rand(-0.15, 0.15);
+      const dist = rand(9, 22);
+      s.className = "burst";
+      s.style.setProperty("--s", rand(4, 9).toFixed(1) + "px");
+      s.style.setProperty("--x", (Math.cos(angle) * dist).toFixed(1) + "vh");
+      s.style.setProperty("--y", (Math.sin(angle) * dist).toFixed(1) + "vh");
+      staffSparks.appendChild(s);
+      setTimeout(() => s.remove(), 950);
+    }
+  });
+
+  // ---------------- Title: what each menu button does ----------------
+  // landscape with a mouse: hovering a button stretches the menu box to the right and writes the
+  // description into the new space. Touch: a long press shows it as a bubble (and doesn't press the button).
+  const MENU_DESC = {
+    openFloorSelectBtn: () => "チェックポイントを選んで塔を登る。倒した敵の階数の合計がソウルになり、敗北してもソウルとレベルは残る。",
+    openTreeBtn: () => (activeRemnantCount() > 0
+      ? "基本強化ツリー・拡張強化・デッキ強化をまとめて開く。ソウルで永続的な強化を習得できる。"
+      : "ソウルを使って基本強化ツリーのノードを習得する。攻撃力・会心・獲得金額などが永続的に上がる。"),
+    openDeckUpgradeBtn: () => (activeRemnantCount() > 0
+      ? "残滓のカード強化と、全ての残滓に共通の残滓スキルツリー。転生ポイントを使い、転生しても失われない。"
+      : "カードの強化・削除と、デッキに入れる枚数の編成（デッキは最低9枚）。"),
+    openCardShopBtn: () => "ソウルで強力なカードを買ってデッキに加える。同じカードは買うたびに値上がりする。",
+    openAchievementsBtn: () => "達成した実績の一覧。効果は全て足し算で、転生しても失われない。",
+    openPanelPreviewBtn: () => "転生パネルを覗き見る（購入は転生した後）。転生でもらえる転生ポイントも確認できる。",
+    openPanelBtn: () => `レベルに応じた転生ポイント（いまなら +${fmt(transcendGainForLevel(save.level))}）を得て、ソウル・基本強化・デッキを手放して最初からやり直す。`,
+  };
+  const menuBox = el.openFloorSelectBtn.parentElement;
+  const hoverMenuMQ = window.matchMedia("(hover: hover) and (pointer: fine) and (orientation: landscape) and (min-width: 861px)");
+  function menuLabel(btn) { return [...btn.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim(); }
+  Object.keys(MENU_DESC).forEach((id) => {
+    const btn = el[id];
+    btn.addEventListener("mouseenter", () => {
+      if (!hoverMenuMQ.matches) return;
+      el.menuDescTitle.textContent = menuLabel(btn);
+      el.menuDescText.textContent = MENU_DESC[id]();
+      menuBox.classList.add("show-desc");
+    });
+    let pressTimer = null;
+    let longPressed = false;
+    btn.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch") return;
+      longPressed = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => { longPressed = true; showMenuTip(btn, MENU_DESC[id]()); }, 450);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => btn.addEventListener(ev, () => clearTimeout(pressTimer)));
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    // a long press only explains; it must not also fire the button
+    btn.addEventListener("click", (e) => {
+      if (!longPressed) return;
+      longPressed = false;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+  });
+  menuBox.addEventListener("mouseleave", () => menuBox.classList.remove("show-desc"));
+  let menuTipTimer = null;
+  function showMenuTip(btn, text) {
+    document.querySelectorAll(".menu-tip").forEach((t) => t.remove());
+    const tip = document.createElement("div");
+    tip.className = "menu-tip";
+    const title = document.createElement("div");
+    title.className = "menu-tip-title";
+    title.textContent = menuLabel(btn);
+    const body = document.createElement("div");
+    body.textContent = text;
+    tip.appendChild(title);
+    tip.appendChild(body);
+    document.body.appendChild(tip);
+    const r = btn.getBoundingClientRect();
+    const top = r.top - tip.offsetHeight - 8;
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, r.left + r.width / 2 - tip.offsetWidth / 2)) + "px";
+    tip.style.top = (top > 8 ? top : r.bottom + 8) + "px";
+    clearTimeout(menuTipTimer);
+    menuTipTimer = setTimeout(() => tip.remove(), 3500);
+    document.addEventListener("pointerdown", () => tip.remove(), { once: true, capture: true });
   }
 
   // ---------------- Keyboard (tempo) ----------------
