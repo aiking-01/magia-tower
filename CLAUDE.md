@@ -35,8 +35,16 @@
 
 - 正のリポジトリは `aiking-01/magia-tower`。公開（Vercel プロジェクト `magia-tower-f`）は、その写しの
   `suzuki1027mizuki-ops/magia-tower-f` の main へのプッシュで自動デプロイされる → https://magia-tower-f.vercel.app/
-- ユーザーの PC では `origin` が両方に同時にプッシュする設定になっている（fetch は aiking-01、push は2つ）。
-  別の環境（クラウドなど）で作業したときは、**両方の main に同じコミットを送る**こと。片方だけだと公開されないか、正のリポジトリと食い違う。
+- **クラウドのセッションは `suzuki1027mizuki-ops/magia-tower-f` で作業する。** その main にプッシュすればそのまま公開される。
+  aiking-01 側へはクラウドからは送れないので、そちらは下の手順でユーザーの PC からそろえる。
+- ユーザーの PC では `origin` が両方に同時にプッシュする設定（fetch は aiking-01、push は2つ）。写しは `mirror` で取得できる。
+  クラウドで進んだ分を aiking-01 にそろえる手順（ユーザーの PC で）：
+  ```
+  git fetch mirror
+  git merge --ff-only mirror/main
+  git push origin main
+  ```
+  ローカルで作業を始める前にもこれを実行しておく（クラウド側の変更を取り込まないまま作業すると食い違う）。
 - `.vercelignore` で `.claude` / `festival/tools` / この `CLAUDE.md` を公開物から外している。
 - コミットの末尾には `Co-Authored-By:` の行を付ける。
 
