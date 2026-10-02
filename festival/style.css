@@ -1318,6 +1318,9 @@ body.title-bg h1 { display: none; } /* the logo is the title here */
   .deco-runes { display: none; }
 }
 @media (max-width: 860px), (max-aspect-ratio: 4 / 5) {
+  /* one column: the staff steps back behind the menu as decoration (the z-index: 1 above is for the
+     two-column layout, where it stands beside the menu) */
+  .home-staff { z-index: 0; }
   .deco-tower { left: 62%; height: 44vh; opacity: 0.35; }
   .deco-c1 { height: 46vh; }
 }
