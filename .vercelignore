@@ -2,3 +2,5 @@
 .claude
 # balance simulator for the festival edition: a dev tool, not part of the game
 festival/tools
+# notes for Claude sessions (local and cloud): not part of the game
+CLAUDE.md
