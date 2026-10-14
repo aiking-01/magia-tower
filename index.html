@@ -41,7 +41,7 @@
               <button class="btn secondary" id="openDeckUpgradeBtn">デッキ強化を見る</button>
               <button class="btn secondary" id="openCardShopBtn" style="display:none;">カードショップ</button>
               <button class="btn secondary" id="openAchievementsBtn">実績</button>
-              <button class="btn secondary" id="openPanelPreviewBtn" style="display:none;">転生パネルを見る</button>
+              <button class="btn secondary" id="openPanelPreviewBtn" style="display:none;">転生パネル</button>
               <button class="btn glow-btn" id="openPanelBtn" style="display:none;">転生</button>
               <div class="menu-desc" id="menuDesc" aria-hidden="true"><div class="menu-desc-inner">
                 <div class="menu-desc-title" id="menuDescTitle"></div>
@@ -58,6 +58,7 @@
                 <button class="btn ghost" id="abandonTrialBtn">苦難を放棄</button>
               </div>
               <div class="idle-report" id="idleReport"></div>
+              <div class="home-items" id="homeItems" style="display:none;"></div>
               <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
             </div>
           </div>
@@ -196,7 +197,13 @@
     <div class="screen" id="screen-battle">
       <div class="battle-layout">
         <div class="panel">
-          <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 100</span></div>
+          <div class="floor-row"><span class="floor-label" id="floorLabel">階層 1 / 100</span>
+            <div class="auto-controls">
+              <button class="auto-btn" id="autoPlayBtn" title="カードを自動で使い、商人の後も自動で次の階へ進む [A]">AUTO<span class="key-hint">A</span></button>
+              <button class="auto-btn" id="autoLoopBtn" title="敗北したら同じ階から自動で再挑戦し、ラスボスの後もエンドレスへ進む [L]" style="display:none;">周回<span class="key-hint">L</span></button>
+              <button class="auto-btn speed" id="speedBtn" title="戦闘の演出の速さ [S]">×1<span class="key-hint">S</span></button>
+            </div>
+          </div>
           <div class="enemy-row">
             <div class="enemy-name" id="enemyName">見張りのモンスター</div>
             <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span><span class="enemy-hp-unit" id="enemyHpUnit"></span></div>
@@ -262,6 +269,8 @@
           <label class="auto-buy-toggle"><input type="checkbox" id="autoBuyToggle"> 毎回自動で実行</label>
         </div>
         <div class="auto-buy-summary" id="autoBuySummary"></div>
+        <div class="auto-note" id="floorClearAutoNote" style="display:none;"></div>
+        <div class="shop-items" id="shopItems" style="display:none;"></div>
         <button class="btn secondary" id="rerollBtn">リロール</button>
         <button class="btn primary next-floor-btn" id="toNextFloorBtn">次の階層へ <span class="key-hint">[Enter]</span></button>
         <button class="btn ghost" id="retreatBtn">撤退する（ここまでの成果を持ち帰る）</button>
@@ -275,6 +284,7 @@
         <div class="reward-sub">力尽きたが、倒した敵たちから得た力は残る。</div>
         <div class="gold-earned" style="font-size:18px;">ソウル +<b id="defeatPoints">0</b></div>
         <div class="reward-sub run-end-hint" id="defeatHint"></div>
+        <div class="auto-note" id="defeatAutoNote" style="display:none;"></div>
         <button class="btn primary" id="defeatRetryBtn">すぐにもう一度挑む</button>
         <button class="btn secondary" id="defeatTreeBtn">基本強化へ</button>
         <button class="btn ghost" id="defeatToHomeBtn">タイトルへ戻る</button>
@@ -301,6 +311,7 @@
         <div class="reward-sub">塔の頂上に到達したが、扉の向こうにはまだ道が続いている。さらに深く進むか、ここで現世へ帰るか。</div>
         <div class="gold-earned" style="font-size:20px;">ソウル +<b id="victoryPoints">0</b></div>
         <div class="trial-clear-note" id="trialClearNote"></div>
+        <div class="auto-note" id="victoryAutoNote" style="display:none;"></div>
         <button class="btn primary" id="enterEndlessBtn">エンドレスモードへ進む（101階〜）</button>
         <button class="btn secondary" id="victoryToHomeBtn">タイトルへ戻る</button>
       </div>

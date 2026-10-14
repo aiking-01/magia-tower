@@ -310,6 +310,8 @@
       trialPending: false, // set by reincarnating: the 苦難 screen comes up once the panel is left
       trialsCleared: {}, // 苦難 id -> true once beaten (its reward is permanent)
       treeExt: {}, // 拡張強化 id -> level; bought with souls, reset by reincarnation like the basic tree
+      items: {}, // 秘宝 id -> copies owned; bought from the floor-clear merchant, kept until the next reincarnation
+      autoPlay: { on: false, loop: false, speed: 1 }, // オート (battle + next floor) / 周回 (auto retry) / 演出の速さ
     };
   }
   function loadSave() {
@@ -327,6 +329,8 @@
         stats: Object.assign({}, parsed.stats || {}),
         remnantTree: Object.assign({}, parsed.remnantTree || {}),
         treeExt: Object.assign({}, parsed.treeExt || {}),
+        items: Object.assign({}, parsed.items || {}),
+        autoPlay: Object.assign({ on: false, loop: false, speed: 1 }, parsed.autoPlay || {}),
         trialsCleared: Object.assign({}, parsed.trialsCleared || {}),
         remnantDecks: Array.isArray(parsed.remnantDecks) ? parsed.remnantDecks : [],
         // draw cards are disabled for now; strip any that survived in an older save
@@ -393,7 +397,8 @@
       if (save.unlockedNodes[node.id] && node.effect && node.effect[key]) total += node.effect[key];
     });
     if (TRIAL_SCALED_TREE_KEYS.includes(key)) total *= trialRule("treeMult", 1);
-    if (key === "atk") total *= trialRule("treeAtkMult", 1) * trialRewardProduct("treeAtk");
+    if (key === "atk") total *= trialRule("treeAtkMult", 1);
+    if (key === "atk" || key === "exponent") total *= trialRewardProduct("treeBoost");
     return total;
   }
 
@@ -473,6 +478,25 @@
   function cardShopUnlocked() { return shopUnlockedCount() > 0; }
   PANEL_SHOP_CHAIN.nodeDesc = (tier) => (tier === 1 ? "カードショップを解放" : `「${CARD_SHOP_POOL[tier - 1].name}」販売開始`);
 
+  // 秘宝の契約: continues the 商人との契約 arm outward (its first tier needs that chain finished) and
+  // strengthens the 秘宝 the floor-clear merchant sometimes sells (see ITEM_DEFS)
+  const ITEM_CHAIN_TIERS = [
+    { rate: 50 }, { power: 25 }, { rate: 50 }, { limit: 1 }, { power: 25 }, { rate: 50 },
+    { power: 50 }, { slots: 1 }, { rate: 100 }, { limit: 1 }, { power: 50 }, { power: 100 },
+  ];
+  const PANEL_ITEM_CHAIN = { id: "panelItem", label: "秘宝の契約", baseCost: 3000, costMult: 2.2, maxLevel: ITEM_CHAIN_TIERS.length, angle: panelSpokeAngle(5), continues: PANEL_SHOP_CHAIN };
+  PANEL_ITEM_CHAIN.nodeDesc = (tier) => {
+    const t = ITEM_CHAIN_TIERS[tier - 1];
+    if (t.rate) return `秘宝の出現率 +${t.rate}%`;
+    if (t.power) return `秘宝の効果 +${t.power}%`;
+    if (t.limit) return `秘宝の所持上限 +${t.limit}`;
+    return `商人に並ぶ秘宝 +${t.slots}`;
+  };
+  function itemChainBonus(key) {
+    if (trialSealed()) return 0;
+    return ITEM_CHAIN_TIERS.slice(0, panelLevel(PANEL_ITEM_CHAIN)).reduce((sum, t) => sum + (t[key] || 0), 0);
+  }
+
   // each tier summons one more remnant (so its level IS the remnant count); steep ×5 price steps
   // since every remnant adds a full extra follow-up attack to every player attack
   const PANEL_REMNANT_CHAIN = { id: "panelRemnant", label: "残滓の召喚", baseCost: 500, costMult: 5, maxLevel: 6, angle: panelSpokeAngle(1) };
@@ -485,7 +509,9 @@
   // basic tree -- a soul sink that never runs out. Levels are reset by reincarnation (it is part of
   // 基本強化); the tiers themselves are permanent. Each level costs ×growth more than the last.
   const TREE_EXT_DEFS = [
-    { id: "extAtk", label: "魂の鍛錬", unit: "攻撃力 +{v}%", key: "atkPct", perLevel: 10, baseCost: 3000, growth: 1.35 },
+    // multiplicative: +10% added to the level/achievement percentages was worth almost nothing late on.
+    // The id stays, so levels already bought simply get the new effect
+    { id: "extAtk", label: "魂の鍛錬", unit: "攻撃力 ×{v}", key: "atkMult", perLevel: 1.05, baseCost: 3000, growth: 1.35, multiplicative: true },
     // multiplies the whole crit multiplier (a flat +5% crit damage was lost next to level/panel crit damage)
     { id: "extCrit", label: "魂の研磨", unit: "会心倍率 ×{v}", key: "critMult", perLevel: 1.05, baseCost: 5000, growth: 1.35, multiplicative: true },
     // souls instead of gold: gold is worthless late, souls buy everything on this very tab
@@ -542,18 +568,20 @@
       { rules: { goldMult: 0.1, soulMult: 0.2, noShop: true }, reward: { soulMult: 3, transcendMult: 2 }, rewardText: "ソウル獲得 ×3・転生ポイント獲得 ×2" },
     ] },
     { id: "exp", name: "忘却", theme: "成長が鈍る", levels: [
-      { rules: { expMult: 0.5 }, reward: { expMult: 2 }, rewardText: "経験値 ×2" },
-      { rules: { expMult: 0.1 }, reward: { expMult: 5 }, rewardText: "経験値 ×5" },
+      // ×2 / ×5 exp were only +4 / +9 levels: worthless. The ★★ one now grows with the level itself
+      { rules: { expMult: 0.5 }, reward: { expMult: 100 }, rewardText: "経験値 ×100" },
+      { rules: { expMult: 0.1 }, reward: { levelMultAdd: 0.002 }, rewardText: "レベル倍率 ×1.025 → ×1.027（1レベルごと）" },
       { rules: { noLevel: true }, reward: { atkPct: 300 }, rewardText: "攻撃力 +300%" },
     ] },
     { id: "deck", name: "枯渇", theme: "カードが弱る", levels: [
-      { rules: { buffScale: 0.5 }, reward: { buffAdd: 0.5 }, rewardText: "バフカードの倍率 +0.5" },
+      { rules: { buffScale: 0.5 }, reward: { buffAdd: 2 }, rewardText: "バフカードの倍率 +2" },
       { rules: { noRank: true }, reward: { rankMult: 1.5 }, rewardText: "カード強化（ランク）の効果 ×1.5" },
-      { rules: { noRank: true, buffScale: 0.5, handDelta: -1 }, reward: { buffAdd: 1 }, rewardText: "バフカードの倍率 +1" },
+      { rules: { noRank: true, buffScale: 0.5, handDelta: -1 }, reward: { buffBoost: 1.5 }, rewardText: "バフの上乗せ ×1.5" },
     ] },
     { id: "tree", name: "束縛", theme: "基本強化が封じられる", levels: [
       { rules: { noFinalMult: true }, reward: { dmgMult: 1.5 }, rewardText: "全ダメージ ×1.5" },
-      { rules: { treeAtkMult: 0.25 }, reward: { treeAtk: 3 }, rewardText: "基本強化の攻撃力 ×3" },
+      // was 基本強化の攻撃力 ×3: the tree's ~1,000 atk is nothing next to the panel's late on; its 累乗 is not
+      { rules: { treeAtkMult: 0.25 }, reward: { treeBoost: 1.5 }, rewardText: "基本強化の攻撃力・累乗 ×1.5" },
       { rules: { treeMult: 0.5, noFinalMult: true }, reward: { exponent: 0.25 }, rewardText: "累乗 +0.25" },
     ] },
   ];
@@ -567,7 +595,7 @@
     const keys = [...new Set(defs.flatMap((d) => Object.keys(d.rules)))];
     const r = Object.fromEntries(keys.map((k) => [k, combineTrialRule(defs, k)]));
     const out = ["転生パネルの効果が封印される（残滓・カードショップ・拡張強化も使えない）"];
-    if (r.hpMult) out.push(`敵のHP ×${fmt(r.hpMult)}`);
+    if (r.hpMult) out.push(`敵のHP ×${fmt(r.hpMult)}（階が進むほど強まり、100階で最大）`);
     if (r.atkMult) out.push(`攻撃力 ×${r.atkMult}`);
     if (r.nDelta) out.push(`手数 ${r.nDelta}`);
     if (r.handDelta) out.push(`初期手札 ${r.handDelta}`);
@@ -577,12 +605,12 @@
     if (r.soulMult) out.push(`獲得ソウル ×${r.soulMult}`);
     if (r.noShop) out.push("商人が何も売らない");
     if (r.expMult) out.push(`獲得経験値 ×${r.expMult}`);
-    if (r.noLevel) out.push("レベルによる攻撃力・会心ダメージが無効");
+    if (r.noLevel) out.push("レベルによるダメージ倍率・会心ダメージが無効");
     if (r.buffScale) out.push(`バフカードの上乗せ ×${r.buffScale}`);
     if (r.noRank) out.push("カード強化（ランク）が無効");
     if (r.noFinalMult) out.push("闘気の枝（最終倍率）が無効");
     if (r.treeAtkMult) out.push(`基本強化の攻撃力 ×${r.treeAtkMult}`);
-    if (r.treeMult) out.push(`基本強化の攻撃力・会心・累乗 ×${r.treeMult}`);
+    if (r.treeMult) out.push(`基本強化の攻撃力・会心率・会心ダメージ・獲得金額・累乗 ×${r.treeMult}`);
     return out;
   }
   function trialOpen(t) {
@@ -601,12 +629,10 @@
     return vals.reduce((a, b) => a * b, 1);
   }
   function trialRule(key, fallback) { return combineTrialRule(activeTrialDefs(), key, fallback); }
-  // 同時挑戦ボーナス: beating k 苦難 at once for the first time (k = 2…8) adds a permanent 全ダメージ ×k
-  function trialComboMult() {
-    let m = 1;
-    for (let k = 2; k <= (save.trialComboBest || 0); k++) m *= k;
-    return m;
-  }
+  // 同時挑戦ボーナス: each new record of 苦難 beaten at once (2…8) adds a permanent 全ダメージ ×1.5 (at most
+  // ×17). It used to be ×k per record (×40,320 in all), which made every ★★★ a one-try job
+  const TRIAL_COMBO_STEP = 1.5;
+  function trialComboMult() { return Math.pow(TRIAL_COMBO_STEP, Math.max(0, (save.trialComboBest || 0) - 1)); }
   function trialRewardSum(key) {
     return TRIALS.reduce((sum, t) => sum + (save.trialsCleared[t.id] && t.reward[key] ? t.reward[key] : 0), 0);
   }
@@ -618,13 +644,28 @@
   const PANEL_TRIAL_CHAIN = { id: "panelTrial", label: "苦難の門", baseCost: 5000, costMult: 20, maxLevel: TRIAL_LEVEL_NAMES.length, angle: panelSpokeAngle(9) };
   PANEL_TRIAL_CHAIN.nodeDesc = (tier) => `${"★".repeat(tier)}の苦難（${TRIAL_CATEGORIES.length}種）を解放`;
   function trialsUnlockedCount() { return panelLevel(PANEL_TRIAL_CHAIN); }
-  function enemyHpForFloor(floor) {
+  // a 苦難's HP multiplier grows in with the floor (mult^(floor/100)), so it bites in full only at the 100F
+  // boss. Applied in full from 1F, 堅牢★'s ×5 made 1F a pure luck wall for a fresh, sealed loop (0 souls,
+  // empty tree) and ★★/★★★ could not be started at all.
+  function trialHpMultForFloor(floor) {
     const mult = trialRule("hpMult", 1);
-    return mult === 1 ? computeFloorHp(floor) : computeFloorHp(floor).mul(mult);
+    return mult === 1 ? 1 : Math.pow(mult, Math.min(floor, FINAL_FLOOR) / FINAL_FLOOR);
+  }
+  function enemyHpForFloor(floor) {
+    const mult = trialHpMultForFloor(floor);
+    return mult === 1 ? computeFloorHp(floor) : computeFloorHp(floor).mul(mult).ceil();
   }
 
+  // 輪廻の理: continues 継承の記憶's arm. Each tier raises the level exponent of the reincarnation payout
+  // (10 × Lv^2 → Lv^3 with all 4), priced steeply so it's a mid/late goal: a cheap Lv^3 bought the whole panel
+  // in two reincarnations once before (see TRANSCEND_POWER)
+  const TRANSCEND_POWER_STEP = 0.25;
+  const PANEL_TRANSCEND_POWER_CHAIN = { id: "panelTranscendPower", label: "輪廻の理", baseCost: 50000, costMult: 4, maxLevel: 4, angle: panelSpokeAngle(10) };
+  PANEL_TRANSCEND_POWER_CHAIN.nodeDesc = (tier) => `転生ポイント = 10×Lv^${fmtMult(TRANSCEND_POWER + TRANSCEND_POWER_STEP * tier)}`;
+  function transcendPower() { return TRANSCEND_POWER + (trialSealed() ? 0 : panelLevel(PANEL_TRANSCEND_POWER_CHAIN) * TRANSCEND_POWER_STEP); }
+
   // chains whose tiers unlock things (not numeric bonuses); rendered and bought the same way
-  const PANEL_CHAINS = [PANEL_SHOP_CHAIN, PANEL_REMNANT_CHAIN, PANEL_TREE_EXT_CHAIN, PANEL_TRIAL_CHAIN];
+  const PANEL_CHAINS = [PANEL_SHOP_CHAIN, PANEL_ITEM_CHAIN, PANEL_REMNANT_CHAIN, PANEL_TREE_EXT_CHAIN, PANEL_TRIAL_CHAIN, PANEL_TRANSCEND_POWER_CHAIN];
 
   // layout: each of the 12 branches owns a 30° slice of a magic circle and folds back and forth inside
   // it (a zigzag, row by row outward), instead of running out in a straight line. Rows are concentric:
@@ -659,16 +700,22 @@
     panelRowCount = Math.max(panelRowCount, row);
     return pos;
   }
-  PANEL_CATEGORIES.forEach((cat) => {
-    cat.nodeIds = [];
-    for (let i = 1; i <= cat.maxLevel; i++) cat.nodeIds.push(cat.id + "_" + i);
-    Object.assign(PANEL_POS, foldedArm(cat.nodeIds, cat.angle));
-  });
-  PANEL_CHAINS.forEach((chain) => {
+  const PANEL_CATEGORY_TRANSCEND = PANEL_CATEGORIES.find((c) => c.key === "transcendGainPct");
+  PANEL_TRANSCEND_POWER_CHAIN.continues = PANEL_CATEGORY_TRANSCEND;
+  PANEL_CATEGORIES.concat(PANEL_CHAINS).forEach((chain) => {
     chain.nodeIds = [];
     for (let i = 1; i <= chain.maxLevel; i++) chain.nodeIds.push(chain.id + "_" + i);
-    Object.assign(PANEL_POS, foldedArm(chain.nodeIds, chain.angle));
   });
+  // a chain that `continues` another branch is folded into the same arm, right after that branch's last step
+  PANEL_CATEGORIES.concat(PANEL_CHAINS).forEach((chain) => {
+    if (chain.continues) return;
+    const ids = PANEL_CHAINS.filter((c) => c.continues === chain).reduce((all, c) => all.concat(c.nodeIds), chain.nodeIds.slice());
+    Object.assign(PANEL_POS, foldedArm(ids, chain.angle));
+  });
+  function panelChainLineStart(chain, i) {
+    if (i > 0) return PANEL_POS[chain.nodeIds[i - 1]];
+    return chain.continues ? PANEL_POS[chain.continues.nodeIds[chain.continues.nodeIds.length - 1]] : PANEL_POS.core;
+  }
   Object.assign(PANEL_POS, foldedArm(PANEL_SPECIALS.map((sp) => sp.id), panelSpokeAngle(7)));
 
   const PANEL_EDGE_PAD = 90;
@@ -815,6 +862,7 @@
       buffBonus: 0, // Σ(each buff card's multiplier − 1) waiting for the next attack/special card
       gold: treeBonus("startGold"),
       runAtkBonus: 0,
+      runAtkPctBonus: 0, // 闘志の秘薬
       runHandBonus: 0,
       runCritRateBonus: 0,
       runCritDamageBonus: 0,
@@ -837,16 +885,19 @@
 
   function currentAtk() {
     const flat = BASE_ATK + treeBonus("atk") + panelBonus("atk") + game.runAtkBonus;
-    return flat * (1 + (levelAtkPct() + achievementBonus("atkPct") + treeExtBonus("atkPct") + trialRewardSum("atkPct")) / 100) * trialRule("atkMult", 1);
+    return flat * (1 + (achievementBonus("atkPct") + trialRewardSum("atkPct") + (game.runAtkPctBonus || 0)) / 100) * treeExtProduct("atkMult") * trialRule("atkMult", 1);
   }
+  // capped 2 below the deck: a hand that holds the whole deck gets every played card straight back
+  // (the shop's 集中の秘薬 already stops there; 苦難 rewards and the tree used to push past it)
   function currentStartHand() {
-    return Math.max(1, BASE_HAND + treeBonus("hand") + panelBonus("hand") + game.runHandBonus + trialRule("handDelta", 0) + trialRewardSum("handDelta"));
+    const want = BASE_HAND + treeBonus("hand") + panelBonus("hand") + game.runHandBonus + trialRule("handDelta", 0) + trialRewardSum("handDelta");
+    return Math.max(1, Math.min(want, runDeckSize() - 2));
   }
   function currentStartN() {
-    return Math.max(1, BASE_N + treeBonus("n") + panelBonus("n") + (game.runNBonus || 0) + trialRule("nDelta", 0) + trialRewardSum("n"));
+    return Math.max(1, BASE_N + treeBonus("n") + panelBonus("n") + (game.runNBonus || 0) + trialRule("nDelta", 0) + trialRewardSum("n") + itemSum("n"));
   }
   function goldMultiplier() {
-    return (1 + (treeBonus("goldPct") + panelBonus("goldPct") + achievementBonus("goldPct") + treeExtBonus("goldPct") + (game.runGoldPctBonus || 0)) / 100) * trialRule("goldMult", 1);
+    return (1 + (treeBonus("goldPct") + panelBonus("goldPct") + achievementBonus("goldPct") + treeExtBonus("goldPct") + (game.runGoldPctBonus || 0)) / 100) * trialRule("goldMult", 1) * itemProduct("goldMult");
   }
   function freeRerollAllowance() { return treeBonus("freeReroll"); }
   function shopOfferCount() { return 2 + treeBonus("shopSlots"); }
@@ -857,25 +908,26 @@
     const node = NODES.find((n) => n.kind === "cheapUpgrade");
     return node && save.unlockedNodes[node.id] ? 1.5 : 2;
   }
-  // damage = (card power + atk) × (baseMult + Σ buff bonus)^exponent × crit.
+  // damage = (card power + atk) × ((baseMult + Σ buff bonus) × level multiplier)^exponent × final × crit.
   // Buffs add inside the base (so stacking them in one turn grows linearly); the exponential,
-  // incremental-style growth comes from the exponent, which only rises through progression
-  // (tree end nodes + the reincarnation panel), never from cards played within a turn.
+  // incremental-style growth comes from the level multiplier (×LEVEL_DMG_MULT per level) raised to the
+  // exponent, which only rises through progression (tree end nodes, the panel, 拡張強化, 苦難, 秘宝) --
+  // so every late +累乗 multiplies the whole level curve, never from cards played within a turn.
   function currentBaseMult() { return 1 + treeBonus("baseMult"); }
   function currentExponent() {
     return 1 + treeBonus("exponent") + panelBonus("exponent") + treeExtBonus("exponent")
-      + (panelSpecialOn("panelDmgFormula") ? 0.2 : 0) + trialRewardSum("exponent");
+      + (panelSpecialOn("panelDmgFormula") ? 0.2 : 0) + trialRewardSum("exponent") + itemSum("exponent");
   }
   // applied outside the exponent: 闘気 nodes (×1.1…×1.3 each) and 魂の昇華
   function finalDamageMult() {
-    let m = treeExtProduct("dmgMult") * trialRewardProduct("dmgMult");
+    let m = treeExtProduct("dmgMult") * trialRewardProduct("dmgMult") * itemProduct("dmgMult");
     NODES.forEach((node) => {
       if (save.unlockedNodes[node.id] && node.effect && node.effect.finalMult && !trialRule("noFinalMult", false)) m *= 1 + node.effect.finalMult;
     });
     return m;
   }
   function damageMultiplier() {
-    return Decimal.pow(Math.max(MIN_BUFF_MULTIPLIER, currentBaseMult() + game.buffBonus), currentExponent()).mul(finalDamageMult());
+    return levelDamageMult().mul(Math.max(MIN_BUFF_MULTIPLIER, currentBaseMult() + game.buffBonus)).pow(currentExponent()).mul(finalDamageMult());
   }
   // one rounding rule for both dealt damage and hand previews (they used ceil vs round and could
   // differ by 1); the -1e-9 keeps float noise like 55.00000000000001 from ceiling up to 56. Returns a Decimal.
@@ -886,14 +938,14 @@
   }
   // the part of damageMultiplier() that applies with no buff stored -- used for hand previews, which
   // (as before) show a card's own damage without whatever buff happens to be pending
-  function unbuffedDamageMultiplier() { return Decimal.pow(currentBaseMult(), currentExponent()).mul(finalDamageMult()); }
+  function unbuffedDamageMultiplier() { return levelDamageMult().mul(currentBaseMult()).pow(currentExponent()).mul(finalDamageMult()); }
 
   const BASE_CRIT_MULT = 1.5;
   const TREE_CRIT_DAMAGE_CAP = 225; // the skill tree alone can never push critDamage past this
   // panel bonuses (継承の会心・会心の覚醒) are a permanent, post-transcend layer and are
   // deliberately NOT subject to the tree-only cap above
   function critRate() {
-    return Math.min(100, (treeBonus("critRate") + game.runCritRateBonus + (panelSpecialOn("panelCritRateBurst") ? 40 : 0)) * trialRule("critRateMult", 1));
+    return Math.min(100, (treeBonus("critRate") + game.runCritRateBonus + (panelSpecialOn("panelCritRateBurst") ? 40 : 0) + itemSum("critRate")) * trialRule("critRateMult", 1));
   }
   function critDamageBonus() {
     return Math.min(TREE_CRIT_DAMAGE_CAP, treeBonus("critDamage")) + game.runCritDamageBonus + panelBonus("critDmgAdd")
@@ -902,12 +954,12 @@
   // cardRateBonus/cardDmgBonus let an individual card (e.g. 会心撃/超会心撃) add to its own crit
   // roll and multiplier on top of the player's usual crit stats, without touching any other card
   function critMultiplier(cardDmgBonus) {
-    const base = (BASE_CRIT_MULT + (critDamageBonus() + (cardDmgBonus || 0)) / 100) * treeExtProduct("critMult") * trialRewardProduct("critMult");
+    const base = (BASE_CRIT_MULT + (critDamageBonus() + (cardDmgBonus || 0)) / 100) * treeExtProduct("critMult") * trialRewardProduct("critMult") * itemProduct("critMult");
     return panelSpecialOn("panelCritMultDouble") ? base * 2 : base;
   }
   function rollCrit(cardRateBonus) {
     if (trialRule("noCrit", false)) return false;
-    return Math.random() * 100 < critRate() + (cardRateBonus || 0);
+    return Math.random() * 100 < critRate() + (cardRateBonus || 0) * trialRule("critRateMult", 1);
   }
 
   // ---------------- Level (kept across runs, reset by reincarnation) ----------------
@@ -916,19 +968,22 @@
   const LEVEL_EXP_BASE = 50;
   const LEVEL_EXP_GROWTH = 1.2;
   const EXP_PER_ENEMY_HP = 1;
-  const LEVEL_ATK_PCT = 3; // +3% atk per level above 1 -- a percent so flat atk purchases keep getting amplified
+  // ×1.025 damage per level above 1, multiplied (not added: +3%/level left a Lv300 player at only ×10) and
+  // raised to 累乗 together with the buff part (see damageMultiplier). Lv100 ≈ ×12, Lv300 ≈ ×1,600 at 累乗 1
+  const LEVEL_DMG_MULT = 1.025;
   const LEVEL_CRIT_DMG = 1; // +1% crit damage per level above 1, outside the tree's cap
   // transcend points for reincarnating = BASE × level^POWER. Was BASE × 1.1^(level−1): Lv185 paid 9.4億,
   // 213× the whole panel, so two reincarnations bought everything. Lv94 pays about the same as before.
   const TRANSCEND_BASE = 10;
   const TRANSCEND_POWER = 2;
   function expToNext(level) { return Decimal.pow(LEVEL_EXP_GROWTH, level - 1).mul(LEVEL_EXP_BASE).ceil(); }
-  function expRemainingText() { return fmt(expToNext(save.level).sub(save.exp)); }
-  function levelAtkPct() { return trialRule("noLevel", false) ? 0 : (save.level - 1) * LEVEL_ATK_PCT; }
+  function expRemainingText() { return fmt(Decimal.max(0, expToNext(save.level).sub(save.exp))); }
+  function levelDamageMultPer() { return LEVEL_DMG_MULT + trialRewardSum("levelMultAdd"); }
+  function levelDamageMult() { return trialRule("noLevel", false) ? new Decimal(1) : Decimal.pow(levelDamageMultPer(), save.level - 1); }
   function gainExp(amount) {
     const add = new Decimal(amount);
     if (!add.gt(0)) return 0;
-    save.exp = save.exp.add(add.mul((1 + achievementBonus("expPct") / 100) * trialRule("expMult", 1) * trialRewardProduct("expMult")));
+    save.exp = save.exp.add(add.mul((1 + achievementBonus("expPct") / 100) * trialRule("expMult", 1) * trialRewardProduct("expMult") * itemProduct("expMult")));
     const startLevel = save.level;
     // a deep floor can be worth thousands of levels at once: buy them as one geometric series,
     // then let the exact loop settle whatever float slack is left
@@ -949,12 +1004,12 @@
   }
   function transcendGainForLevel(level) {
     if (level <= 1) return 0;
-    return Math.ceil(TRANSCEND_BASE * Math.pow(level, TRANSCEND_POWER) * (1 + panelBonusRaw("transcendGainPct") / 100) * trialRewardProduct("transcendMult") - 1e-9);
+    return Math.ceil(TRANSCEND_BASE * Math.pow(level, transcendPower()) * (1 + panelBonus("transcendGainPct") / 100) * trialRewardProduct("transcendMult") - 1e-9);
   }
   // soul income from any source goes through here so the achievement bonus applies everywhere
   function grantSouls(amount) {
     const gained = Math.floor(amount * (1 + (achievementBonus("soulPct") + treeExtBonus("soulPct")) / 100)
-      * trialRule("soulMult", 1) * trialRewardProduct("soulMult"));
+      * trialRule("soulMult", 1) * trialRewardProduct("soulMult") * itemProduct("soulMult"));
     save.points += gained;
     return gained;
   }
@@ -1078,8 +1133,15 @@
     { id: "lastMove", name: "背水の陣", desc: "最後の1手で敵を倒す", hidden: true, test: () => stat("lastMoveWins") >= 1, bonus: { critDmg: 30 } },
     { id: "bossOneShot", name: "一刀両断", desc: "ラスボスを1手で倒す", hidden: true, test: () => stat("bossOneShot") >= 1, bonus: { atkPct: 50 } },
     { id: "idle8h", name: "眠れる塔", desc: "8時間分の放置収入を一度に受け取る", hidden: true, test: () => stat("maxIdleMinutes") >= 480, bonus: { soulPct: 20 } },
-    { id: "staffGlow", name: "杖の目覚め", desc: "タイトルの杖に触れて光らせる", hidden: true, test: () => stat("staffTouches") >= 1, bonus: { atkPct: 10 } },
-    { id: "staffGlow50", name: "魔力の共鳴", desc: "タイトルの杖を50回光らせる", hidden: true, test: () => stat("staffTouches") >= 50, bonus: { soulPct: 15 } },
+    { id: "staffGlow", name: "杖の目覚め", desc: "タイトルの杖に触れて光らせる", hidden: true, test: () => stat("staffTouches") >= 1, bonus: { atkPct: 3 } },
+    { id: "staffGlow50", name: "魔力の共鳴", desc: "タイトルの杖を50回光らせる", hidden: true, test: () => stat("staffTouches") >= 50, bonus: { soulPct: 5 } },
+    // ---- 秘宝 ----
+    { id: "item1", name: "秘宝の発見", desc: "商人から秘宝を買う", test: () => stat("itemsBought") >= 1, bonus: { goldPct: 30 } },
+    { id: "item5", name: "秘宝の蒐集家", desc: "1回の転生のあいだに秘宝を5個持つ", test: () => itemsOwnedTotal() >= 5, bonus: { atkPct: 40 } },
+    { id: "item15", name: "宝物庫の主", desc: "1回の転生のあいだに秘宝を15個持つ", test: () => itemsOwnedTotal() >= 15, bonus: { atkPct: 120 } },
+    { id: "itemKinds", name: "万宝の目利き", desc: "全種類の秘宝を同時に持つ", test: () => ITEM_DEFS.every((d) => itemCount(d) > 0), bonus: { atkPct: 200 } },
+    { id: "itemBought30", name: "商人の上客", desc: "秘宝を通算30個買う", test: () => stat("itemsBought") >= 30, bonus: { soulPct: 30 } },
+    { id: "itemLegend", name: "混沌を掴む者", desc: "伝説の秘宝「混沌の欠片」を手に入れる", hidden: true, test: () => ITEM_DEFS.some((d) => d.legendary && itemCount(d) > 0), bonus: { atkPct: 100 } },
     // hidden: the only tampering a browser game can actually observe is the clock jumping backwards
     { id: "timeTraveler", name: "時を遡る者", desc: "端末の時計を過去に戻す", hidden: true, test: () => stat("clockRollback") >= 1, bonus: { soulPct: 10 } },
   ]);
@@ -1092,12 +1154,18 @@
   function bonusText(bonus) {
     return Object.entries(bonus).map(([k, v]) => `${ACHIEVEMENT_BONUS_LABELS[k]}+${v}%`).join("・");
   }
+  // repeats until nothing new unlocks: the "N achievements" entries count unlocks made in the same pass
   function checkAchievements() {
-    ACHIEVEMENTS.forEach((a) => {
-      if (save.achievements[a.id] || !a.test()) return;
-      save.achievements[a.id] = true;
-      showToast(`実績解除：${a.name}（${bonusText(a.bonus)}）`);
-    });
+    let unlocked;
+    do {
+      unlocked = false;
+      ACHIEVEMENTS.forEach((a) => {
+        if (save.achievements[a.id] || !a.test()) return;
+        save.achievements[a.id] = true;
+        unlocked = true;
+        showToast(`実績解除：${a.name}（${bonusText(a.bonus)}）`);
+      });
+    } while (unlocked);
   }
 
   // ---------------- Remnants (summoned from the reincarnation panel; never reset) ----------------
@@ -1153,7 +1221,7 @@
   }
   function remnantRankCost(def) { return Math.ceil(REMNANT_RANK_BASE_COST * Math.pow(2, def.rank || 0)); }
   function remnantHitDamage(def, playerHit) {
-    return roundDamage(new Decimal(playerHit).mul(remnantCardShare(def) / 100));
+    return roundDamage(new Decimal(playerHit).mul(remnantCardShare(def) / 100 * itemProduct("remnantMult")));
   }
   // per floor: each remnant cycles through its own shuffled deck, one card per follow-up
   function buildRemnantRuntime() {
@@ -1172,7 +1240,7 @@
   // the HP bar drains like a flurry. Stops early if the enemy dies or the floor/run changes.
   async function runRemnantFollowUps(thisGame, playerHit) {
     for (const r of game.remnants) {
-      await new Promise((res) => setTimeout(res, REMNANT_HIT_MS));
+      await new Promise((res) => setTimeout(res, spd(REMNANT_HIT_MS)));
       if (game !== thisGame || game.gameOver || game.enemyHp.lte(0) || !r.cards.length) return;
       const def = r.cards[r.next % r.cards.length];
       r.next += 1;
@@ -1215,6 +1283,7 @@
     if (!grant || !rate || elapsed <= 0) { persistSave(); return null; }
     const minutes = Math.min(elapsed, idleCapMs()) / 60000;
     maxStat("maxIdleMinutes", minutes);
+    checkAchievements();
     const exp = rate.exp.mul(minutes);
     const levels = gainExp(exp);
     const souls = grantSouls(rate.souls * minutes);
@@ -1244,8 +1313,8 @@
   // a buff card's multiplier as actually applied: + 継承の闘気 and the 枯渇 reward, with 枯渇's
   // restriction scaling only the bonus part (so ×3 at ×0.5 becomes ×2, never below ×1)
   function buffApplied(cardMult) {
-    const bonus = cardMult + panelBonus("buffAdd") + trialRewardSum("buffAdd") - 1;
-    return 1 + bonus * trialRule("buffScale", 1);
+    const bonus = cardMult + panelBonus("buffAdd") + trialRewardSum("buffAdd") + itemSum("buffAdd") - 1;
+    return 1 + bonus * trialRule("buffScale", 1) * trialRewardProduct("buffBoost");
   }
   function effectiveValue(card) {
     const rank = trialRule("noRank", false) ? 0 : (card.rank || 0) * trialRewardProduct("rankMult");
@@ -1274,11 +1343,12 @@
     game.enemyPoisoned = false; // a fresh enemy each floor, never carries poison over
     game.critStreak = 0;
     game.percentUsed = false; // 割合カード（処刑の火）は1階につき1回まで
+    game.firstHitDone = false; // 先駆けの角笛 boosts the floor's first attack/special card
     game.gameOver = false;
     game.deck = buildShuffledDeck();
     game.remnants = buildRemnantRuntime();
     game.followUpBusy = false;
-    game.inputReadyAt = performance.now() + INPUT_GUARD_MS;
+    game.inputReadyAt = performance.now() + spd(INPUT_GUARD_MS);
     el.enemyVisual.classList.remove("defeated", "hit");
     game.hand = [];
     for (let i = 0; i < currentStartHand(); i++) drawOne();
@@ -1347,6 +1417,14 @@
     autoBuyBtn: document.getElementById("autoBuyBtn"),
     autoBuyToggle: document.getElementById("autoBuyToggle"),
     autoBuySummary: document.getElementById("autoBuySummary"),
+    shopItems: document.getElementById("shopItems"),
+    autoPlayBtn: document.getElementById("autoPlayBtn"),
+    autoLoopBtn: document.getElementById("autoLoopBtn"),
+    speedBtn: document.getElementById("speedBtn"),
+    floorClearAutoNote: document.getElementById("floorClearAutoNote"),
+    defeatAutoNote: document.getElementById("defeatAutoNote"),
+    victoryAutoNote: document.getElementById("victoryAutoNote"),
+    homeItems: document.getElementById("homeItems"),
     toNextFloorBtn: document.getElementById("toNextFloorBtn"),
     retreatBtn: document.getElementById("retreatBtn"),
 
@@ -1529,7 +1607,7 @@
   const DMG_GLYPHS_USABLE = location.protocol !== "file:";
   function appendDmgChars(container, text) {
     const chars = [...text];
-    const gap = chars.length > 1 ? Math.min(DMG_CHAR_BOUNCE_STAGGER_MS, DMG_CHAR_STAGGER_SPAN_MS / (chars.length - 1)) : 0;
+    const gap = (chars.length > 1 ? Math.min(DMG_CHAR_BOUNCE_STAGGER_MS, DMG_CHAR_STAGGER_SPAN_MS / (chars.length - 1)) : 0) / gameSpeed();
     chars.forEach((ch, i) => {
       const file = DMG_GLYPHS_USABLE ? DMG_GLYPH_FILES[ch] : null;
       const span = document.createElement("span");
@@ -1579,7 +1657,7 @@
     // matches .dmg-float's dmgHoldFade animation duration in style.css (bounce, then a brief
     // hold, then a quick fade) -- removal is timed to land exactly as that fade reaches 0 so
     // there's no visible pop-off.
-    setTimeout(() => f.remove(), DMG_LIFETIME_MS);
+    setTimeout(() => f.remove(), spd(DMG_LIFETIME_MS));
     if (isRemnant) {
       el.enemyVisual.classList.remove("remnant-hit");
       void el.enemyVisual.offsetWidth; // restart the flash for back-to-back hits
@@ -1631,6 +1709,15 @@
   // misses in a row); floor it so the next attack still deals a sliver instead of 0 / negative damage
   const MIN_BUFF_MULTIPLIER = 0.1;
 
+  // 秘宝 that only count at certain moments: boss floors (巨人殺しの槌) and the first attack/special card
+  // played on a floor (先駆けの角笛). 処刑の火 and poison never get them (a % of max HP must stay a %)
+  function situationalItemMult() {
+    let m = 1;
+    if (enemyForFloor(game.floor).isBoss) m *= itemProduct("bossMult");
+    if (!game.firstHitDone) m *= itemProduct("firstMult");
+    return m;
+  }
+
   // player card hits (not poison/remnants) become lastHit, which the remnants' follow-ups scale from
   function hitEnemy(dmg, isPlayerCard) {
     game.enemyHp = Decimal.max(0, game.enemyHp.sub(dmg));
@@ -1650,7 +1737,8 @@
       const mult = damageMultiplier();
       const isCrit = card.forceCrit || rollCrit(card.critRateBonus);
       const critMult = isCrit ? critMultiplier(card.critDmgBonus) : 1;
-      const dmg = roundDamage(mult.mul(attackBaseDamage(card)).mul(critMult));
+      const dmg = roundDamage(mult.mul(attackBaseDamage(card)).mul(critMult).mul(situationalItemMult()));
+      game.firstHitDone = true;
       hitEnemy(dmg);
       noteCrit(isCrit);
       const multNote = !mult.eq(1) ? `（倍率×${fmtMult(mult)}）` : "";
@@ -1697,7 +1785,8 @@
       const isCrit = rollCrit();
       const critMult = isCrit ? critMultiplier() : 1;
       const raw = specialCardRaw(card);
-      const dmg = roundDamage(mult.mul(raw).mul(critMult));
+      const dmg = roundDamage(mult.mul(raw).mul(critMult).mul(situationalItemMult()));
+      game.firstHitDone = true;
       hitEnemy(dmg);
       noteCrit(isCrit);
       const multNote = !mult.eq(1) ? `（倍率×${fmtMult(mult)}）` : "";
@@ -1793,7 +1882,7 @@
         checkAchievements();
         checkResult();
       }
-    }, CARD_PLAY_ANIM_MS);
+    }, spd(CARD_PLAY_ANIM_MS));
   }
 
   function enemyHpPct() { return Math.max(0, game.enemyHp.div(game.enemyHpMax).toNumber() * 100); }
@@ -1851,20 +1940,25 @@
       save.transcendUnlocked = true;
       persistSave();
       el.victoryPoints.textContent = fmt(gained);
-      setTimeout(() => { if (game === thisGame) showScreen("finalVictory"); }, KILL_PAUSE_MS);
+      setTimeout(() => { if (game === thisGame) showScreen("finalVictory"); }, spd(KILL_PAUSE_MS));
     } else {
       save.bestFloor = Math.max(save.bestFloor, game.floor);
       persistSave();
       const goldGain = Math.ceil((10 + game.floor * 3) * goldMultiplier() - 1e-9);
       game.gold += goldGain;
-      setTimeout(() => { if (game === thisGame) openFloorClear(goldGain, levelBefore, levelsGained); }, KILL_PAUSE_MS);
+      setTimeout(() => { if (game === thisGame) openFloorClear(goldGain, levelBefore, levelsGained); }, spd(KILL_PAUSE_MS));
     }
   }
 
   // the seal lifts the moment the boss falls, so the rest of the run (endless included) is at full power
+  function releaseHeldPoints() {
+    save.points += save.trialHeldPoints || 0;
+    save.trialHeldPoints = 0;
+  }
   function completeTrial() {
     const defs = activeTrialDefs();
     save.activeTrials = [];
+    releaseHeldPoints();
     if (!defs.length) return;
     const fresh = defs.filter((t) => !save.trialsCleared[t.id]);
     defs.forEach((t) => { save.trialsCleared[t.id] = true; });
@@ -1874,7 +1968,7 @@
     if (defs.length >= 2 && defs.length > (save.trialComboBest || 0)) {
       const from = (save.trialComboBest || 1) + 1;
       save.trialComboBest = defs.length;
-      lines.push(`同時挑戦ボーナス：全ダメージ ×${Array.from({ length: defs.length - from + 1 }, (_, i) => from + i).reduce((a, b) => a * b, 1)}`);
+      lines.push(`同時挑戦ボーナス：全ダメージ ×${fmtMult(Math.pow(TRIAL_COMBO_STEP, defs.length - from + 1))}`);
     }
     checkAchievements();
     const text = lines.join(" ");
@@ -1891,7 +1985,7 @@
     el.defeatPoints.textContent = fmt(gained);
     prepareRetry(gained);
     const thisGame = game;
-    setTimeout(() => { if (game === thisGame) showScreen("defeat"); }, KILL_PAUSE_MS);
+    setTimeout(() => { if (game === thisGame) showScreen("defeat"); }, spd(KILL_PAUSE_MS));
   }
 
   function onRetreat() {
@@ -1932,6 +2026,7 @@
   function reincarnateNow() {
     save.transcendPoints += transcendGainForLevel(save.level);
     save.activeTrials = []; // unfinished 苦難 end with the loop
+    save.trialHeldPoints = 0;
     save.trialPending = true; // leaving the panel offers the 苦難 screen (if any are unlocked)
     save.level = 1;
     save.exp = new Decimal(0);
@@ -1940,6 +2035,7 @@
     save.points = panelBonus("startPoints");
     save.unlockedNodes = {};
     save.treeExt = {};
+    save.items = {};
     save.deckDefs = cloneDeckDefs(BASE_DECK_DEFS);
     save.cardShopPurchases = {}; // the bought copies were just wiped from the deck, so their price climb goes too
     save.bestFloor = 0;
@@ -1961,7 +2057,8 @@
   // shop only sells temporary this-run stat boosts now; deck changes (rank-up/delete, new
   // cards via the skill tree) are permanent, meta-level actions handled outside a run.
   const SHOP_POOL = [
-    { id: "atk3", name: "闘志の秘薬", desc: "基礎攻撃力 +3（このラン中）", baseCost: 20, apply: () => { game.runAtkBonus += 3; } },
+    // a percent, not +3 flat: auto-buy stacked hundreds of +3s, which dwarfed the whole early tree
+    { id: "atk3", name: "闘志の秘薬", desc: "攻撃力 +3%（このラン中）", baseCost: 20, apply: () => { game.runAtkPctBonus += 3; } },
     // 初期手札+1は全フロアの手数効率に効き続ける強力な効果なので、序盤の周回では商人に並ばない。
     // 手札が山札に近づくと使ったカードがすぐ手元に戻るので、出現率を大きく下げ（weight）、1ラン3個まで。
     // 手札+2がデッキ枚数に届いたら並ばない（手札9=デッキ9で双撃の構えの連打が復活していた）
@@ -1975,6 +2072,75 @@
     { id: "goldRun1", name: "強欲の秘薬", desc: "獲得金額 +10%（このラン中、買うたび価格上昇）", baseCost: 30, unlockFloor: 21, priceGrowth: 1.2, apply: () => { game.runGoldPctBonus += 10; } },
     //{ id: "runN1", name: "疾風の秘薬", desc: "初期手数 +2（このラン中）", baseCost: 35, apply: () => { game.runNBonus += 2; } },
   ];
+
+  // ---------------- 秘宝 (rare merchant items) ----------------
+  // now and then the floor-clear merchant also lays out one 秘宝: a strong, permanent effect that is kept
+  // across runs until the next reincarnation. Each kind can be held up to `max` copies (+ 秘宝の契約's
+  // 所持上限); copies stack (multipliers multiply, additions add). 秘宝の契約 also raises the chance and
+  // scales the effect: a ×v item becomes ×(1 + (v−1)(1 + power)), a +v item +v(1 + power); `flat` ones
+  // (counts like 手数) are never scaled. Rolled once per merchant visit, so rerolling can't fish for them.
+  const ITEM_BASE_CHANCE = 0.015;
+  const ITEM_DEFS = [
+    { id: "dragonHeart", name: "竜の心臓", desc: "全ダメージ ×{v}", key: "dmgMult", value: 3, max: 3, weight: 1, price: 1 },
+    { id: "philosopherStone", name: "賢者の石", desc: "累乗 +{v}", key: "exponent", value: 0.1, max: 3, weight: 0.5, price: 1.5, additive: true },
+    { id: "hourglass", name: "刻の砂時計", desc: "手数 +{v}", key: "n", value: 1, max: 2, weight: 0.4, price: 1.5, additive: true, flat: true },
+    { id: "seerCrystal", name: "千里眼の水晶", desc: "会心率 +{v}%", key: "critRate", value: 15, max: 2, weight: 1, price: 0.8, additive: true },
+    { id: "starGem", name: "星砕きの宝玉", desc: "会心倍率 ×{v}", key: "critMult", value: 2, max: 2, weight: 0.8, price: 1 },
+    { id: "warBangle", name: "闘神の腕輪", desc: "バフカードの倍率 +{v}", key: "buffAdd", value: 1, max: 2, weight: 0.8, price: 1, additive: true },
+    { id: "giantHammer", name: "巨人殺しの槌", desc: "中ボス・ラスボスへのダメージ ×{v}", key: "bossMult", value: 10, max: 2, weight: 0.8, price: 0.8 },
+    { id: "warHorn", name: "先駆けの角笛", desc: "各階で最初に使う攻撃・特殊カードのダメージ ×{v}", key: "firstMult", value: 10, max: 2, weight: 0.8, price: 0.8 },
+    { id: "echoBell", name: "残響の鈴", desc: "残滓のダメージ ×{v}", key: "remnantMult", value: 3, max: 2, weight: 0.6, price: 1, needsRemnant: true },
+    { id: "goldScale", name: "黄金の天秤", desc: "獲得金額 ×{v}", key: "goldMult", value: 2, max: 2, weight: 1.2, price: 0.6 },
+    { id: "soulGrail", name: "魂喰らいの杯", desc: "ソウル獲得 ×{v}", key: "soulMult", value: 2, max: 2, weight: 0.8, price: 1 },
+    { id: "sageTome", name: "叡智の古書", desc: "経験値 ×{v}", key: "expMult", value: 3, max: 2, weight: 0.8, price: 1 },
+    { id: "chaosShard", name: "混沌の欠片", desc: "全ダメージ ×{v}", key: "dmgMult", value: 30, max: 1, weight: 0.08, price: 3, legendary: true },
+  ];
+  function itemCount(def) { return save.items[def.id] || 0; }
+  function itemMax(def) { return def.max + itemChainBonus("limit"); }
+  function itemPower() { return itemChainBonus("power") / 100; }
+  function itemValue(def) {
+    if (def.flat) return def.value;
+    return def.additive ? def.value * (1 + itemPower()) : 1 + (def.value - 1) * (1 + itemPower());
+  }
+  function itemDescText(def) { return def.desc.replace("{v}", fmtMult(itemValue(def))); }
+  function itemSum(key) {
+    return ITEM_DEFS.reduce((sum, d) => sum + (d.key === key && d.additive ? itemValue(d) * itemCount(d) : 0), 0);
+  }
+  function itemProduct(key) {
+    return ITEM_DEFS.reduce((m, d) => m * (d.key === key && !d.additive && itemCount(d) ? Math.pow(itemValue(d), itemCount(d)) : 1), 1);
+  }
+  function itemsOwnedTotal() { return ITEM_DEFS.reduce((n, d) => n + itemCount(d), 0); }
+  function itemChance() { return ITEM_BASE_CHANCE * (1 + itemChainBonus("rate") / 100); }
+  // each further copy of the same 秘宝 costs ×2; the base follows the floor like the potions do
+  function itemCost(def) { return Math.ceil((60 + game.floor * 12) * def.price * Math.pow(2, itemCount(def))); }
+  function rollItemOffers() {
+    game.itemOffers = [];
+    if (trialRule("noShop", false)) return;
+    const pool = ITEM_DEFS.filter((d) => itemCount(d) < itemMax(d) && (!d.needsRemnant || activeRemnantCount() > 0));
+    const slots = 1 + itemChainBonus("slots");
+    for (let i = 0; i < slots; i++) {
+      if (!(DEBUG_MODE && i === 0) && Math.random() >= itemChance()) continue;
+      const pick = pickWeighted(pool.filter((d) => !game.itemOffers.some((o) => o.def === d)), 1)[0];
+      if (pick) game.itemOffers.push({ def: pick, cost: itemCost(pick), bought: false });
+    }
+    if (game.itemOffers.length) bumpStat("itemsSeen", game.itemOffers.length);
+  }
+  function buyItemOffer(offer) {
+    debugTopUp();
+    if (offer.bought || game.gold < offer.cost || itemCount(offer.def) >= itemMax(offer.def)) return false;
+    game.gold -= offer.cost;
+    save.items[offer.def.id] = itemCount(offer.def) + 1;
+    offer.bought = true;
+    bumpStat("itemsBought");
+    addLog(`秘宝を入手：${offer.def.name}（${itemDescText(offer.def)}）`, "levelup");
+    showToast(`秘宝「${offer.def.name}」を手に入れた！ ${itemDescText(offer.def)}（次の転生まで有効）`);
+    checkAchievements();
+    persistSave();
+    return true;
+  }
+  function ownedItemsText() {
+    return ITEM_DEFS.filter((d) => itemCount(d) > 0).map((d) => `${d.name}${itemCount(d) > 1 ? "×" + itemCount(d) : ""}`).join("・");
+  }
 
   function shopBuyCount(opt) { return game.shopBuyCounts[opt.id] || 0; }
   function runDeckSize() { return game.deckDefs.reduce((sum, d) => sum + d.count, 0); }
@@ -2018,17 +2184,18 @@
       a.textContent = `LEVEL UP!  Lv.${levelBefore} → Lv.${save.level}`;
       const b = document.createElement("div");
       b.className = "levelup-sub";
-      b.textContent = `攻撃力 +${fmt(levelsGained * LEVEL_ATK_PCT)}%・会心ダメージ +${fmt(levelsGained * LEVEL_CRIT_DMG)}%`;
+      b.textContent = `レベル倍率 ×${fmtMult(Decimal.pow(levelDamageMultPer(), levelsGained))}・会心ダメージ +${fmt(levelsGained * LEVEL_CRIT_DMG)}%`;
       el.levelUpBanner.appendChild(a);
       el.levelUpBanner.appendChild(b);
       el.levelUpBanner.style.display = "";
     } else el.levelUpBanner.style.display = "none";
     rollShopOffers();
+    rollItemOffers();
     game.shopRerollsUsed = 0;
     el.autoBuySummary.textContent = "";
     renderShop();
     showScreen("floorClear");
-    if (autoBuyUnlocked() && save.autoBuyEnabled) setTimeout(runAutoBuy, AUTO_BUY_STEP_MS);
+    if (autoBuyUnlocked() && save.autoBuyEnabled) setTimeout(runAutoBuy, spd(AUTO_BUY_STEP_MS));
   }
 
   // deck strengthening screen: title-screen-only, permanent, paid with level-up points (save.points)
@@ -2045,7 +2212,8 @@
       const canInc = canIncreaseActive(def);
       const row = document.createElement("div");
       row.className = "deck-zone-row";
-      const rankEligible = def.type !== "chain" && def.type !== "special" && def.type !== "poison" && def.type !== "percent" && !def.randomValues;
+      const rankVoid = trialRule("noRank", false); // 苦難「枯渇」: ranks have no effect, so buying one would be wasted
+      const rankEligible = !rankVoid && def.type !== "chain" && def.type !== "special" && def.type !== "poison" && def.type !== "percent" && !def.randomValues;
       const rankLabel = def.rank ? ` / Lv.${def.rank}` : "";
       row.innerHTML = `
         <div class="dz-info">
@@ -2058,7 +2226,7 @@
           <button class="dz-btn" ${canInc ? "" : "disabled"} data-action="activeUp">＋</button>
         </div>
         <div class="dz-actions">
-          <button class="dz-btn" ${rankEligible ? "" : "disabled"} data-action="rank">強化 ${fmt(rCost)}pt</button>
+          <button class="dz-btn" ${rankEligible ? "" : "disabled"} data-action="rank">${rankVoid ? "苦難で無効" : `強化 ${fmt(rCost)}pt`}</button>
           <button class="dz-btn danger" ${deletable ? "" : "disabled"} data-action="delete">削除 ${deletable ? fmt(dCost) + "pt" : "これ以上不可"}</button>
         </div>
       `;
@@ -2149,6 +2317,7 @@
 
   function doReroll() {
     debugTopUp();
+    if (!availableShopPool().length) return false; // nothing can come up (苦難「飢餓」★★★)
     const cost = rerollCost();
     if (game.gold < cost) return false;
     game.gold -= cost;
@@ -2161,6 +2330,22 @@
   function renderShop() {
     el.shopGold.textContent = fmt(game.gold);
     el.shopOptions.innerHTML = "";
+    (game.itemOffers || []).forEach((offer) => {
+      const div = document.createElement("div");
+      const affordable = !offer.bought && game.gold >= offer.cost;
+      div.className = "option-card item-offer" + (offer.def.legendary ? " legendary" : "") + (offer.bought || !affordable || autoBuyRunning ? " disabled" : "");
+      const owned = itemCount(offer.def);
+      div.innerHTML = `<div class="oc-tag">${offer.def.legendary ? "伝説の秘宝" : "秘宝"}</div><div class="oc-name">${offer.def.name}</div>`
+        + `<div class="oc-desc">${itemDescText(offer.def)}<br><small>次の転生まで有効・所持 ${owned}/${itemMax(offer.def)}</small></div>`
+        + `<div class="oc-cost">${offer.bought ? "購入済み" : fmt(offer.cost) + " G"}</div>`;
+      if (!offer.bought && affordable) {
+        div.addEventListener("click", () => {
+          if (autoBuyRunning) return;
+          if (buyItemOffer(offer)) renderShop();
+        });
+      }
+      el.shopOptions.appendChild(div);
+    });
     game.shopOffers.forEach((offer) => {
       const div = document.createElement("div");
       const affordable = !offer.bought && game.gold >= offer.cost;
@@ -2177,7 +2362,7 @@
 
     const cost = rerollCost();
     const free = cost === 0;
-    const canReroll = !autoBuyRunning && (free || game.gold >= cost);
+    const canReroll = !autoBuyRunning && availableShopPool().length > 0 && (free || game.gold >= cost);
     el.rerollBtn.textContent = free ? `リロール（無料）` : `リロール（${fmt(cost)}G）`;
     el.rerollBtn.disabled = !canReroll;
     el.rerollBtn.style.opacity = canReroll ? "1" : "0.5";
@@ -2186,6 +2371,9 @@
     el.autoBuyRow.style.display = unlocked ? "" : "none";
     el.autoBuyBtn.textContent = autoBuyRunning ? "自動購入を停止" : "自動購入";
     el.autoBuyToggle.checked = !!save.autoBuyEnabled;
+    const owned = ownedItemsText();
+    el.shopItems.style.display = owned ? "" : "none";
+    el.shopItems.textContent = owned ? `所持している秘宝：${owned}` : "";
   }
 
   el.rerollBtn.addEventListener("click", () => {
@@ -2214,6 +2402,15 @@
     let rerolls = 0;
     renderShop();
     while (!autoBuyStopRequested && stillHere()) {
+      // a 秘宝 comes first: it's rare and lasts until the next reincarnation, a potion only for this run
+      const item = (game.itemOffers || []).find((o) => !o.bought && game.gold >= o.cost);
+      if (item) {
+        buyItemOffer(item);
+        bought[item.def.name] = (bought[item.def.name] || 0) + 1;
+        renderShop();
+        await new Promise((r) => setTimeout(r, spd(AUTO_BUY_STEP_MS)));
+        continue;
+      }
       const offer = game.shopOffers.filter((o) => !o.bought && game.gold >= o.cost).sort((a, b) => a.cost - b.cost)[0];
       if (offer) {
         buyOffer(offer);
@@ -2226,7 +2423,7 @@
         rerolls += 1;
       }
       renderShop();
-      await new Promise((r) => setTimeout(r, AUTO_BUY_STEP_MS));
+      await new Promise((r) => setTimeout(r, spd(AUTO_BUY_STEP_MS)));
     }
     autoBuyRunning = false;
     if (game !== thisGame || !game.shopOffers) return; // left the shop mid-way (next floor / retreat)
@@ -2249,6 +2446,7 @@
     if (!game || !game.shopOffers) return;
     autoBuyStopRequested = true;
     game.shopOffers = null;
+    game.itemOffers = null;
     startFloor(game.floor + 1);
   }
   el.toNextFloorBtn.addEventListener("click", goNextFloor);
@@ -2287,6 +2485,7 @@
     el.deckPileCount.textContent = game.deck.length;
     el.handCount.textContent = game.hand.length + "枚";
     el.battleGold.textContent = fmt(game.gold);
+    renderAutoControls();
 
     // FLIP technique: record where every current card (and the deck pile) sits before the
     // rebuild, so cards can visibly slide from their old spot to their new one afterward
@@ -2305,10 +2504,10 @@
       const cardClass = "card " + card.type + (card.playing ? " playing" : "") + (spent ? " spent" : "");
       let typeLabel = TYPE_LABELS[card.type] || "バフ";
       let valueLabel;
-      if (card.type === "attack") valueLabel = fmt(roundDamage(unbuffedDamageMultiplier().mul(attackBaseDamage(card)))) + " dmg";
+      if (card.type === "attack") valueLabel = fmt(roundDamage(unbuffedDamageMultiplier().mul(attackBaseDamage(card)).mul(situationalItemMult()))) + " dmg";
       else if (card.type === "draw") valueLabel = "+" + effectiveValue(card) + "枚";
       else if (card.type === "percent") valueLabel = spent ? "この階は使用済み" : Math.round(effectiveValue(card) * 100) + "%";
-      else if (card.type === "special") valueLabel = fmt(roundDamage(unbuffedDamageMultiplier().mul(specialCardRaw(card)))) + " dmg";
+      else if (card.type === "special") valueLabel = fmt(roundDamage(unbuffedDamageMultiplier().mul(specialCardRaw(card)).mul(situationalItemMult()))) + " dmg";
       else if (card.type === "poison") valueLabel = "猛毒付与";
       else if (card.type === "chain") {
         const count = game.hand.filter((c) => c.uid !== card.uid && c.type !== "chain" && Array.isArray(c.tags) && c.tags.includes(card.targetTag)).length;
@@ -2370,16 +2569,16 @@
       node.style.transition = "none";
       node.style.transform = `translate(${dx}px, ${dy}px)`;
       void node.offsetWidth; // flush the start position so the transition below has something to animate from
-      node.style.transition = `transform ${FLIP_SLIDE_MS}ms ease`;
+      node.style.transition = `transform ${spd(FLIP_SLIDE_MS)}ms ease`;
       node.style.transform = "";
-      setTimeout(() => { node.style.transition = ""; }, FLIP_SLIDE_MS);
+      setTimeout(() => { node.style.transition = ""; }, spd(FLIP_SLIDE_MS));
     });
 
     if (toFlip.length) {
       // stay face-down for a beat after arriving, then flip to reveal
       setTimeout(() => {
         toFlip.forEach((inner) => inner.classList.add("flipped"));
-      }, CARD_FLIP_DELAY_MS);
+      }, spd(CARD_FLIP_DELAY_MS));
     }
 
     syncEnemyVisualHeight();
@@ -2431,6 +2630,9 @@
         + `制限：${trialRuleTexts(trials).slice(1).join("／")}`;
     }
     renderHomeSeals();
+    const owned = ownedItemsText();
+    el.homeItems.style.display = owned ? "" : "none";
+    el.homeItems.textContent = owned ? `所持している秘宝（次の転生まで）：${owned}` : "";
     // once a remnant exists, 基本強化+デッキ強化 merge into one tabbed プレイヤー強化 and the
     // デッキ強化 slot becomes 残滓強化 (during a 苦難 the remnants are sealed, so it goes back to デッキ強化)
     const hasRemnants = activeRemnantCount() > 0;
@@ -2512,6 +2714,7 @@
     ["crit", "会心", (a) => a.id.startsWith("crit")],
     ["reinc", "転生・残滓", (a) => a.id.startsWith("reinc") || a.id.startsWith("remnant")],
     ["trial", "苦難", (a) => a.id.startsWith("trial")],
+    ["item", "秘宝", (a) => a.id.startsWith("item")],
     ["growth", "強化・蓄え", (a) => /^(ext|deck|souls|transcend)/.test(a.id)],
     ["meta", "実績", (a) => a.id.startsWith("ach")],
   ];
@@ -2648,7 +2851,7 @@
   }
 
   function leavePanel() {
-    if (!panelViewOnly && save.trialPending) {
+    if (!panelFromTitle && save.trialPending) {
       if (trialsUnlockedCount() > 0) { openTrials(); return; }
       save.trialPending = false;
       persistSave();
@@ -2672,8 +2875,8 @@
     el.trialStartBtn.disabled = !picked.length;
     el.trialStartBtn.textContent = picked.length ? `選んだ${picked.length}つの苦難に挑む` : "選んだ苦難に挑む";
     const best = save.trialComboBest || 0;
-    el.trialCombo.innerHTML = "同時挑戦ボーナス（初めてその数を同時に越えたとき）："
-      + [2, 3, 4, 5, 6, 7, 8].map((k) => `<span class="${k <= best ? "got" : ""}">${k}つ→全ダメージ×${k}</span>`).join("");
+    el.trialCombo.innerHTML = `同時挑戦ボーナス（初めてその数を同時に越えるたびに全ダメージ×${TRIAL_COMBO_STEP}、現在 ×${fmtMult(trialComboMult())}）：`
+      + [2, 3, 4, 5, 6, 7, 8].map((k) => `<span class="${k <= best ? "got" : ""}">${k}つ→合計×${fmtMult(Math.pow(TRIAL_COMBO_STEP, k - 1))}</span>`).join("");
     el.trialList.innerHTML = "";
     TRIAL_CATEGORIES.forEach((cat) => {
       const group = document.createElement("div");
@@ -2714,7 +2917,9 @@
   function startTrials(ids) {
     save.activeTrials = ids.slice();
     save.trialPending = false;
-    save.points = 0; // the souls 継承の礎 just granted come from the panel, which a 苦難 seals
+    // the souls 継承の礎 just granted come from the panel, which a 苦難 seals: held back until it ends
+    save.trialHeldPoints = save.points;
+    save.points = 0;
     bumpStat("trialsStarted");
     trialSelection = [];
     checkAchievements();
@@ -2736,6 +2941,7 @@
     if (!defs.length) return;
     if (!(await showConfirm(`苦難（${defs.map((t) => t.name).join("・")}）を放棄します。報酬は得られず、転生パネルの封印が解けます。よろしいですか?`))) return;
     save.activeTrials = [];
+    releaseHeldPoints();
     persistSave();
     renderHome();
   });
@@ -2817,6 +3023,7 @@
       `・ソウル（${fmt(save.points)}）\n` +
       "・基本強化（習得済みノード・拡張強化）\n" +
       "・デッキ編成\n" +
+      (itemsOwnedTotal() ? `・秘宝（${ownedItemsText()}）\n` : "") +
       `・最高到達階（${save.bestFloor > 0 ? save.bestFloor + "階" : "なし"}）\n\n` +
       "【引き継がれるもの】\n" +
       `・転生ポイント（${fmt(save.transcendPoints)}）\n` +
@@ -2835,6 +3042,7 @@
     const level = panelLevel(cat);
     if (level >= tier) return "unlocked";
     if (level < tier - 1) return "locked"; // previous tier in this chain not owned yet
+    if (cat.continues && panelLevel(cat.continues) < cat.continues.maxLevel) return "locked";
     return save.transcendPoints >= panelTierCost(cat, tier) ? "available" : "unaffordable";
   }
   function panelSpecialState(special) {
@@ -2843,10 +3051,12 @@
     return save.transcendPoints >= special.cost ? "available" : "unaffordable";
   }
 
-  // view-only: opened from the title before reincarnating, to see what the points would buy
-  let panelViewOnly = false;
-  function openPanel(viewOnly) {
-    panelViewOnly = viewOnly;
+  // opened from the title (not right after a reincarnation): same panel, purchases included; the header also
+  // shows what the next reincarnation would pay. (It used to be view-only, which stranded the points of a
+  // reincarnation whenever the page was closed before spending them.)
+  let panelFromTitle = false;
+  function openPanel(fromTitle) {
+    panelFromTitle = fromTitle;
     showScreen("panel");
     renderPanel();
     centerPanelOnCore();
@@ -2878,6 +3088,7 @@
   function affordablePanelPurchases() {
     const out = [];
     PANEL_CATEGORIES.concat(PANEL_CHAINS).forEach((c) => {
+      if (c === PANEL_TRIAL_CHAIN) return;
       const tier = panelLevel(c) + 1;
       if (tier <= c.maxLevel && panelChainNodeState(c, tier) === "available") out.push({ chain: c, tier, cost: panelTierCost(c, tier) });
     });
@@ -2885,7 +3096,6 @@
     return out;
   }
   function bulkBuyPanel() {
-    if (panelViewOnly) return;
     const before = panelProgress();
     let count = 0;
     let spent = 0;
@@ -2910,12 +3120,11 @@
   }
 
   function renderPanel() {
-    el.panelBulkBtn.style.display = panelViewOnly ? "none" : "";
     el.panelPointsLabel.textContent = fmt(save.transcendPoints)
-      + (panelViewOnly ? `（転生すると +${fmt(transcendGainForLevel(save.level))}）` : "");
-    el.panelSub.textContent = panelViewOnly
-      ? "閲覧のみ：転生すると、ここで転生ポイントを使って強化できる。ここでの強化は転生しても失われない。"
-      : "転生した！ソウル・基本強化・デッキは初期状態に戻った。ここでの強化は転生しても失われない。中心の「核」をクリックすると次の周回へ進む。";
+      + (panelFromTitle ? `（転生すると +${fmt(transcendGainForLevel(save.level))}）` : "");
+    el.panelSub.textContent = panelFromTitle
+      ? "転生ポイントで永続的な強化を買える（転生しなくても買える）。ここでの強化は転生しても失われない。"
+      : "転生した！ソウル・基本強化・デッキ・秘宝は初期状態に戻った。ここでの強化は転生しても失われない。中心の「核」をクリックすると次の周回へ進む。";
     el.panelMap.innerHTML = "";
 
     const svgNS = "http://www.w3.org/2000/svg";
@@ -2948,7 +3157,7 @@
       svg.appendChild(line);
     });
     PANEL_CHAINS.forEach((chain) => chain.nodeIds.forEach((id, i) => {
-      const from = i === 0 ? PANEL_POS.core : PANEL_POS[chain.nodeIds[i - 1]];
+      const from = panelChainLineStart(chain, i);
       const to = PANEL_POS[id];
       const line = document.createElementNS(svgNS, "line");
       line.setAttribute("x1", from.x);
@@ -2996,7 +3205,7 @@
         div.style.top = pos.y + "px";
         const costLabel = state === "unlocked" ? "習得済み" : `${fmt(panelTierCost(cat, tier))}pt`;
         div.innerHTML = `<div class="tn-name">${cat.label} ${tier}</div><div class="tn-desc">${cat.desc} +${fmtMult(panelTierAmount(cat, tier))}</div><div class="tn-cost">${costLabel}</div>`;
-        if (state === "available" && !panelViewOnly) {
+        if (state === "available") {
           div.addEventListener("click", () => {
             if (panelChainNodeState(cat, tier) !== "available") return;
             buyPanelOne({ chain: cat, tier, cost: panelTierCost(cat, tier) });
@@ -3015,7 +3224,7 @@
       div.style.top = pos.y + "px";
       const costLabel = state === "unlocked" ? "習得済み" : `${fmt(special.cost)}pt`;
       div.innerHTML = `<div class="tn-name">${special.label}</div><div class="tn-desc">${special.desc}</div><div class="tn-cost">${costLabel}</div>`;
-      if (state === "available" && !panelViewOnly) {
+      if (state === "available") {
         div.addEventListener("click", () => {
           if (panelSpecialState(special) !== "available") return;
           buyPanelOne({ special, cost: special.cost });
@@ -3034,7 +3243,7 @@
       div.style.top = pos.y + "px";
       const costLabel = state === "unlocked" ? "習得済み" : `${fmt(panelTierCost(chain, tier))}pt`;
       div.innerHTML = `<div class="tn-name">${chain.label} ${tier}</div><div class="tn-desc">${chain.nodeDesc(tier)}</div><div class="tn-cost">${costLabel}</div>`;
-      if (state === "available" && !panelViewOnly) {
+      if (state === "available") {
         div.addEventListener("click", () => {
           if (panelChainNodeState(chain, tier) !== "available") return;
           buyPanelOne({ chain, tier, cost: panelTierCost(chain, tier) });
@@ -3491,6 +3700,7 @@
     if (!count) { showToast("いま習得できる基本強化はない"); return; }
     persistSave();
     renderTree();
+    checkAchievements();
     showToast(`一括購入：${count}個の基本強化を習得した（ソウル -${fmt(spent)}）`);
     celebrateIfCompleted(before, treeProgress(), "基本強化");
   }
@@ -3589,8 +3799,8 @@
       : "カードの強化・削除と、デッキに入れる枚数の編成（デッキは最低9枚）。"),
     openCardShopBtn: () => "ソウルで強力なカードを買ってデッキに加える。同じカードは買うたびに値上がりする。",
     openAchievementsBtn: () => "達成した実績の一覧。効果は全て足し算で、転生しても失われない。",
-    openPanelPreviewBtn: () => "転生パネルを覗き見る（購入は転生した後）。転生でもらえる転生ポイントも確認できる。",
-    openPanelBtn: () => `レベルに応じた転生ポイント（いまなら +${fmt(transcendGainForLevel(save.level))}）を得て、ソウル・基本強化・デッキを手放して最初からやり直す。`,
+    openPanelPreviewBtn: () => "転生ポイントで永続的な強化を買う（転生しなくても買える）。次の転生でもらえる転生ポイントも確認できる。",
+    openPanelBtn: () => `レベルに応じた転生ポイント（いまなら +${fmt(transcendGainForLevel(save.level))}）を得て、ソウル・基本強化・デッキ・秘宝を手放して最初からやり直す。`,
   };
   const menuBox = el.openFloorSelectBtn.parentElement;
   const hoverMenuMQ = window.matchMedia("(hover: hover) and (pointer: fine) and (orientation: landscape) and (min-width: 861px)");
@@ -3649,16 +3859,187 @@
     document.addEventListener("pointerdown", () => tip.remove(), { once: true, capture: true });
   }
 
+  // ---------------- Auto-play (AUTO / 周回 / 速度) ----------------
+  // AUTO picks and plays cards by itself, buys any 秘宝 it can afford (potions stay with 自動購入) and moves on
+  // to the next floor once the merchant is done. 周回 (after the first final-boss kill) also retries from the
+  // same checkpoint after a defeat and walks into endless mode after the boss. 速度 divides every battle
+  // timing (card use, kill pause, remnant flurry, card flips, damage numbers) by ×1/×2 (×4 after the first
+  // final-boss kill). It pauses while the tab is hidden: hidden time is already paid by the idle income.
+  const AUTO_PLAY_GAP_MS = 140; // a beat between auto-played cards, so a turn still reads card by card
+  const AUTO_NEXT_FLOOR_MS = 650; // how long the merchant screen stays up before AUTO moves on
+  const AUTO_RETRY_MS = 1400; // 周回: the defeat/victory screen stays this long before going again
+  function autoSpeeds() { return save.transcendUnlocked ? [1, 2, 4] : [1, 2]; }
+  function gameSpeed() {
+    const sp = save.autoPlay && save.autoPlay.speed;
+    return autoSpeeds().includes(sp) ? sp : 1;
+  }
+  function spd(ms) { return ms / gameSpeed(); }
+  function autoLoopUnlocked() { return !!save.transcendUnlocked; }
+  function autoLoopOn() { return save.autoPlay.on && save.autoPlay.loop && autoLoopUnlocked(); }
+  function applyGameSpeed() { document.documentElement.style.setProperty("--spd", String(gameSpeed())); }
+
+  // what a damage card deals right now on average (crit chance folded in), and its guaranteed (no-crit) part
+  function autoCardDamage(card) {
+    const mult = damageMultiplier().mul(situationalItemMult());
+    let raw, rate, cm;
+    if (card.type === "attack") {
+      raw = attackBaseDamage(card);
+      rate = Math.min(100, critRate() + (card.critRateBonus || 0) * trialRule("critRateMult", 1));
+      cm = critMultiplier(card.critDmgBonus);
+    } else {
+      raw = specialCardRaw(card);
+      rate = critRate();
+      cm = critMultiplier();
+    }
+    if (trialRule("noCrit", false)) rate = 0;
+    if (card.forceCrit) rate = 100;
+    const base = mult.mul(raw);
+    return { sure: rate >= 100 ? base.mul(cm) : base, avg: base.mul(1 + (rate / 100) * (cm - 1)) };
+  }
+  function autoBuffValue(card) {
+    const vals = card.randomValues ? card.randomValues : [effectiveValue(card)];
+    return vals.reduce((a, v) => a + buffApplied(v), 0) / vals.length;
+  }
+  // 1) a damage card that surely kills now  2) 処刑の火 (never wastes a stored buff)  3) poison while there are
+  // moves left for it to tick  4) buffs while a damage card is in hand and a move remains for it
+  // 5) otherwise the damage card with the best average
+  function chooseAutoCard() {
+    const hand = game.hand.filter((c) => !c.playing && !(c.type === "percent" && game.percentUsed));
+    if (!hand.length) return null;
+    const dmgCards = hand.filter((c) => c.type === "attack" || c.type === "special")
+      .map((c) => Object.assign({ card: c }, autoCardDamage(c)))
+      .sort((a, b) => (b.avg.gt(a.avg) ? 1 : b.avg.lt(a.avg) ? -1 : 0));
+    const killer = dmgCards.filter((d) => d.sure.gte(game.enemyHp)).sort((a, b) => (a.sure.lt(b.sure) ? -1 : 1))[0];
+    if (killer) return killer.card;
+    const pct = hand.find((c) => c.type === "percent");
+    if (pct) return pct;
+    const poison = hand.find((c) => c.type === "poison");
+    if (poison && !game.enemyPoisoned && game.n >= 3) return poison;
+    const buffs = hand.filter((c) => c.type === "buff" && autoBuffValue(c) > 1).sort((a, b) => autoBuffValue(b) - autoBuffValue(a));
+    if (buffs.length && dmgCards.length && game.n >= 2) return buffs[0];
+    if (dmgCards.length) return dmgCards[0].card;
+    const chain = hand.find((c) => c.type === "chain");
+    return chain || hand.find((c) => c.type !== "buff" && c.type !== "poison") || hand[0];
+  }
+
+  let autoTimer = null;
+  let autoWait = { screen: "", until: 0 };
+  function scheduleAuto(ms) {
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(autoStep, Math.max(16, ms));
+  }
+  function activeScreenName() {
+    const active = document.querySelector(".screen.active");
+    return active ? active.id.replace("screen-", "") : "";
+  }
+  // true once the current screen has been up for `ms` (the clock restarts whenever the screen changes)
+  function autoWaited(screen, ms) {
+    const now = performance.now();
+    if (autoWait.screen !== screen) autoWait = { screen, until: now + ms };
+    return now >= autoWait.until;
+  }
+  function autoStep() {
+    autoTimer = null;
+    if (!save.autoPlay.on) return;
+    if (document.visibilityState === "hidden" || el.confirmOverlay.classList.contains("active")) { scheduleAuto(400); return; }
+    const screen = activeScreenName();
+    if (screen === "battle" && game && !game.gameOver) {
+      autoWait = { screen: "battle", until: 0 };
+      if (game.followUpBusy || performance.now() < game.inputReadyAt || game.hand.some((c) => c.playing)) { scheduleAuto(30); return; }
+      const card = chooseAutoCard();
+      if (card) playCard(card.uid);
+      scheduleAuto(spd(CARD_PLAY_ANIM_MS + AUTO_PLAY_GAP_MS));
+      return;
+    }
+    if (screen === "floorClear" && game && game.shopOffers) {
+      (game.itemOffers || []).forEach((o) => { if (!o.bought && game.gold >= o.cost && buyItemOffer(o)) renderShop(); });
+      if (autoBuyRunning) { autoWait = { screen: "", until: 0 }; renderAutoNotes(); scheduleAuto(60); return; }
+      renderAutoNotes();
+      if (autoWaited("floorClear", spd(AUTO_NEXT_FLOOR_MS))) goNextFloor();
+      scheduleAuto(40);
+      return;
+    }
+    if (screen === "defeat" && autoLoopOn()) {
+      if (autoWaited("defeat", spd(AUTO_RETRY_MS))) retryRun();
+      scheduleAuto(60);
+      return;
+    }
+    if (screen === "finalVictory" && autoLoopOn() && game) {
+      if (autoWaited("finalVictory", spd(AUTO_RETRY_MS))) el.enterEndlessBtn.click();
+      scheduleAuto(60);
+      return;
+    }
+    autoWait = { screen: "", until: 0 };
+    scheduleAuto(300); // title, tree, … : AUTO stays armed and picks up again in the next battle
+  }
+  function renderAutoControls() {
+    el.autoPlayBtn.classList.toggle("on", !!save.autoPlay.on);
+    el.autoLoopBtn.style.display = autoLoopUnlocked() ? "" : "none";
+    el.autoLoopBtn.classList.toggle("on", autoLoopOn());
+    el.speedBtn.firstChild.textContent = "×" + gameSpeed();
+    el.speedBtn.classList.toggle("on", gameSpeed() > 1);
+    renderAutoNotes();
+  }
+  function renderAutoNotes() {
+    const on = save.autoPlay.on;
+    const stop = `<button class="btn ghost" data-auto-stop>止める</button>`;
+    el.floorClearAutoNote.style.display = on ? "" : "none";
+    el.floorClearAutoNote.innerHTML = on ? `AUTO：${autoBuyRunning ? "自動購入が終わったら" : "まもなく"}次の階へ進む${stop}` : "";
+    const loop = autoLoopOn();
+    el.defeatAutoNote.style.display = loop ? "" : "none";
+    el.defeatAutoNote.innerHTML = loop ? `周回：まもなく同じ階から再挑戦する${stop}` : "";
+    el.victoryAutoNote.style.display = loop ? "" : "none";
+    el.victoryAutoNote.innerHTML = loop ? `周回：まもなくエンドレスへ進む${stop}` : "";
+  }
+  function setAutoPlay(on) {
+    save.autoPlay.on = on;
+    persistSave();
+    renderAutoControls();
+    if (on) scheduleAuto(spd(AUTO_PLAY_GAP_MS));
+    else { clearTimeout(autoTimer); autoTimer = null; }
+    showToast(on ? "AUTO：カードを自動で使い、商人の後は自動で次の階へ進む" : "AUTOを止めた");
+  }
+  function toggleAutoLoop() {
+    if (!autoLoopUnlocked()) return;
+    save.autoPlay.loop = !save.autoPlay.loop;
+    if (save.autoPlay.loop) save.autoPlay.on = true;
+    persistSave();
+    renderAutoControls();
+    if (save.autoPlay.on) scheduleAuto(60);
+    showToast(save.autoPlay.loop ? "周回：負けても同じ階から自動で再挑戦し、ラスボスの後はエンドレスへ進む" : "周回を止めた（AUTOは続く）");
+  }
+  function cycleSpeed() {
+    const list = autoSpeeds();
+    save.autoPlay.speed = list[(list.indexOf(gameSpeed()) + 1) % list.length];
+    persistSave();
+    applyGameSpeed();
+    renderAutoControls();
+  }
+  el.autoPlayBtn.addEventListener("click", () => setAutoPlay(!save.autoPlay.on));
+  el.autoLoopBtn.addEventListener("click", toggleAutoLoop);
+  el.speedBtn.addEventListener("click", cycleSpeed);
+  document.addEventListener("click", (e) => {
+    if (e.target.closest && e.target.closest("[data-auto-stop]")) setAutoPlay(false);
+  });
+
   // ---------------- Keyboard (tempo) ----------------
   // battle: 1-9 play the hand from the left / shop: Enter = next floor / defeat・retreat: Enter = retry
   document.addEventListener("keydown", (e) => {
     if (el.confirmOverlay.classList.contains("active") || e.repeat) return;
-    if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
+    // only typing fields swallow keys: a focused checkbox (自動購入「毎回自動で実行」) used to block Enter
+    const typing = e.target instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(e.target.type);
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     const active = document.querySelector(".screen.active");
     const screen = active ? active.id.replace("screen-", "") : "";
     if (screen === "battle" && game && /^[1-9]$/.test(e.key)) {
       const card = game.hand[Number(e.key) - 1];
       if (card) playCard(card.uid);
+    } else if (screen === "battle" && (e.key === "a" || e.key === "A")) {
+      setAutoPlay(!save.autoPlay.on);
+    } else if (screen === "battle" && (e.key === "s" || e.key === "S")) {
+      cycleSpeed();
+    } else if (screen === "battle" && (e.key === "l" || e.key === "L")) {
+      toggleAutoLoop();
     } else if (screen === "floorClear" && e.key === "Enter") {
       e.preventDefault();
       goNextFloor();
@@ -3820,6 +4201,8 @@
   }
 
   // ---------------- Init ----------------
+  applyGameSpeed();
+  if (save.autoPlay.on) scheduleAuto(300);
   showScreen("home");
   debugTopUp();
   showIdleReport(settleIdle(true)); // time spent closed (capped) is paid out by the remnants on load
