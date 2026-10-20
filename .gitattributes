@@ -1,0 +1,2 @@
+# git hooks are run by sh: a CRLF checkout (core.autocrlf on Windows) would break their "#!/bin/sh" line
+tools/hooks/* text eol=lf

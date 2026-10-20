@@ -1,6 +1,7 @@
 # dev-only files that must not be served from the public deployment
 .claude
 .github
+.gitattributes
 # balance simulator for the festival edition: a dev tool, not part of the game
 festival/tools
 # tests, bots and the dev server (tools/), design notes (docs/), and the split sources game.js is built from (src/)
