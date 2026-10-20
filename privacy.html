@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>プレイ情報とセーブの扱い｜マギア・タワー</title>
+  <style>
+    :root { --bg: #0c1030; --panel: #151a44; --text: #e8ebff; --dim: #a8afd8; --accent: #8ff3ff; --line: #2b3364; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.8 "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
+    h1 { font-size: 22px; letter-spacing: 2px; margin: 8px 0 4px; }
+    h2 { font-size: 17px; color: var(--accent); margin: 28px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+    p, li { color: var(--text); }
+    .dim { color: var(--dim); font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: var(--panel); white-space: nowrap; }
+    a { color: var(--accent); }
+    code { background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="./">← ゲームに戻る</a></p>
+  <h1>プレイ情報とセーブの扱い</h1>
+  <p class="dim">マギア・タワー（完全版）で、サーバーに送る情報と、その扱いについての説明です。</p>
+
+  <h2>1. 送るもの・送らないもの</h2>
+  <p>サーバーに送るのは、次の2つだけです。どちらも、あなたが選んだときにだけ送ります。</p>
+  <ul>
+    <li><b>プレイ情報</b>：初めて起動したときに「送る」を選んだ場合だけ（あとから「データ管理」で止められます）。</li>
+    <li><b>クラウドセーブ</b>：「データ管理」で「引き継ぎを設定する」を押した場合だけ。</li>
+  </ul>
+  <p>名前・メールアドレス・端末の識別番号など、あなた個人を特定する情報は集めません。広告や、ほかのサービスとの共有にも使いません。</p>
+
+  <h2>2. プレイ情報の中身</h2>
+  <table>
+    <tr><th>内容</th><td>到達した階、負けた階、1回の挑戦にかかった時間とカードの枚数、オートの使い方、レベル、転生の回数、苦難への挑戦、手に入れた秘宝、ゲームの版、画面の大きさの区分（スマホ／PC）、累計プレイ時間</td></tr>
+    <tr><th>目的</th><td>詰まりやすい場所や、遊ぶペースを調べて、難しさや数値の調整に使うため</td></tr>
+    <tr><th>識別</th><td>端末ごとにランダムに作った番号（匿名ID）で、同じ端末からの情報をまとめます。この番号から個人はわかりません</td></tr>
+    <tr><th>保存期間</th><td>約3か月。それより古いものは自動で消えます</td></tr>
+    <tr><th>消し方</th><td>「データ管理」の「送ったプレイ情報を削除」で、その端末から送った情報をサーバーから消せます</td></tr>
+  </table>
+
+  <h2>3. クラウドセーブ（引き継ぎ）</h2>
+  <table>
+    <tr><th>内容</th><td>ゲームのセーブデータ（強化やレベルなどの進み具合）と、レベル・最高到達階・転生回数・ゲームの版</td></tr>
+    <tr><th>目的</th><td>別の端末への引き継ぎと、データが消えたときの復元のため</td></tr>
+    <tr><th>引き継ぎコード</th><td>コードとパスワードを知っている人だけが、復元できます。パスワードは元に戻せない形（ハッシュ）にして保存しています。コードとパスワードは人に教えないでください</td></tr>
+    <tr><th>保存期間</th><td>最後に保存してから1年。最新と1つ前の2つを残します</td></tr>
+    <tr><th>消し方</th><td>「データ管理」の「クラウドのデータを削除」で、すぐに消せます</td></tr>
+  </table>
+
+  <h2>4. 通信の記録について</h2>
+  <p>送りすぎを防ぐため、送信の回数を数えるときにだけ、IPアドレスを元に戻せない形（ハッシュ）に変えたものを使います。この値は1日で消え、IPアドレスそのものは保存しません。
+     ただし、サーバーを提供している会社（Vercel、Upstash）が、通常の運用のために通信の記録を一時的に持つことがあります。</p>
+
+  <h2>5. 保存先</h2>
+  <p>サーバーは Vercel、データベースは Upstash（Redis）を使っています。どちらも海外のサービスです。</p>
+
+  <h2>6. 運営者・お問い合わせ</h2>
+  <!-- 運営者の名前と連絡先をここに書く -->
+  <p>運営者：マギア・タワー制作者　／　お問い合わせ：（準備中）</p>
+
+  <p class="dim">2026年10月 作成</p>
+</main>
+</body>
+</html>

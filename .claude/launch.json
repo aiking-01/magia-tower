@@ -7,6 +7,13 @@
       "runtimeArgs": ["-c", "import http.server as h,functools;C=type('C',(h.SimpleHTTPRequestHandler,),{'end_headers':lambda s:(s.send_header('Cache-Control','no-store'),h.SimpleHTTPRequestHandler.end_headers(s))[1]});h.ThreadingHTTPServer(('',8746),functools.partial(C,directory='.')).serve_forever()"],
       "port": 8746,
       "autoPort": false
+    },
+    {
+      "name": "magia-tower-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/devserver.js", "8747"],
+      "port": 8747,
+      "autoPort": false
     }
   ]
 }

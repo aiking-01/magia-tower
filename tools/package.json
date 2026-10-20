@@ -1,0 +1,12 @@
+{
+  "name": "magia-tower-tools",
+  "private": true,
+  "description": "マギア・タワーの開発用ツール（テスト・ボット・開発サーバー）。公開物には含めない。",
+  "scripts": {
+    "test": "node run-tests.js",
+    "dev": "node devserver.js"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

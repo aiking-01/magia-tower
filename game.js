@@ -35,7 +35,62 @@
   const MID_BOSS = { name: "死の賭博師", art: "enemies/10-midboss.png" };
   const FINAL_BOSS = { name: "塔の支配者（ラスボス）", art: "enemies/11-finalboss.png" };
 
+  // ---------------- Endless: 特性 and 深層の守護者 ----------------
+  // Past 100F an enemy may carry a 特性 (25% / 40% from 200F / 60% from 300F; from 500F a second one 30% of the
+  // time) that asks for a different way of playing; beating one pays ×1.5 souls (×2 with two). Every 100F from 200
+  // a 深層の守護者 takes the mid-boss's place: two fixed 特性, HP ×3, ×3 souls and a 秘宝 at the next merchant.
+  // Looks are the existing art recolored by a CSS filter (art/filter are data, so new art can be dropped in).
+  // 硬化 never pairs with 瘴気 or 幻影: with too few moves left over, such a floor could be impossible.
+  const TRAIT_DEFS = [
+    { id: "armor", name: "鉄壁", desc: "会心でない一撃のダメージ ×0.25（処刑の火・猛毒には効かない）", filter: "grayscale(0.7) contrast(1.35) brightness(1.15)", color: "#cfd8e8" },
+    { id: "regen", name: "再生", desc: "手を打つたびに最大HPの8%回復する", filter: "hue-rotate(85deg) saturate(1.5)", color: "#7dffa0" },
+    { id: "curse", name: "呪縛", desc: "バフの上乗せが半分になる", filter: "hue-rotate(250deg) saturate(1.7)", color: "#c58bff" },
+    { id: "miasma", name: "瘴気", desc: "手数 −1", filter: "sepia(0.6) hue-rotate(40deg) saturate(1.6) brightness(0.85)", color: "#c4d36a" },
+    { id: "mirror", name: "鏡面", desc: "処刑の火・猛毒が効かない", filter: "saturate(0.25) brightness(1.4)", color: "#eaf7ff" },
+    { id: "frenzy", name: "狂化", desc: "HP ×2（倒すと獲得金額 ×2）", filter: "hue-rotate(-35deg) saturate(2.4)", color: "#ff6b6b" },
+    { id: "phantom", name: "幻影", desc: "この階で最初に使う攻撃・特殊カードは外れる", filter: "opacity(0.62) blur(0.6px) hue-rotate(190deg)", color: "#9fb4ff" },
+    { id: "harden", name: "硬化", desc: "1回のダメージは最大HPの30%まで", filter: "sepia(0.75) saturate(1.3) contrast(1.25)", color: "#e0b84a" },
+  ];
+  const TRAIT_EXCLUSIVE = [["harden", "miasma"], ["harden", "phantom"]];
+  const TRAIT_HIT_CAP = 0.3; // 硬化
+  const TRAIT_REGEN = 0.08; // 再生
+  const TRAIT_ARMOR = 0.25; // 鉄壁
+  const GUARDIAN_HP_MULT = 3;
+  const GUARDIAN_SOUL_MULT = 3;
+  function traitsCompatible(a, b) { return a !== b && !TRAIT_EXCLUSIVE.some(([x, y]) => (x === a && y === b) || (x === b && y === a)); }
+  const TRAIT_PAIRS = [];
+  TRAIT_DEFS.forEach((a, i) => TRAIT_DEFS.slice(i + 1).forEach((b) => { if (traitsCompatible(a.id, b.id)) TRAIT_PAIRS.push([a.id, b.id]); }));
+  function isGuardianFloor(floor) { return floor > FINAL_FLOOR && floor % 100 === 0; }
+  function guardianForFloor(floor) {
+    const depth = floor / 100;
+    return {
+      isBoss: true, isMidBoss: false, isGuardian: true, name: `第${depth}層の守護者`, art: FINAL_BOSS.art,
+      filter: `hue-rotate(${(depth * 47) % 360}deg) saturate(1.6) contrast(1.1)`,
+      traits: TRAIT_PAIRS[((depth - 2) * 7) % TRAIT_PAIRS.length].slice(),
+    };
+  }
+  function rollTraits(floor) {
+    if (floor <= FINAL_FLOOR) return [];
+    if (isGuardianFloor(floor)) return guardianForFloor(floor).traits;
+    const chance = floor < 200 ? 0.25 : floor < 300 ? 0.4 : 0.6;
+    if (Math.random() >= chance) return [];
+    const first = TRAIT_DEFS[Math.floor(Math.random() * TRAIT_DEFS.length)].id;
+    if (floor < 500 || Math.random() >= 0.3) return [first];
+    const rest = TRAIT_DEFS.filter((t) => traitsCompatible(first, t.id));
+    return [first, rest[Math.floor(Math.random() * rest.length)].id];
+  }
+  function hasTrait(id) { return !!(game && game.traits && game.traits.includes(id)); }
+  function traitDef(id) { return TRAIT_DEFS.find((t) => t.id === id); }
+  // what 鉄壁/硬化 do to one hit (cards and remnants; % damage is handled by 鏡面 instead)
+  function applyTraitsToHit(dmg, isCrit) {
+    let d = dmg;
+    if (!isCrit && hasTrait("armor")) d = roundDamage(d.mul(TRAIT_ARMOR));
+    if (hasTrait("harden")) d = Decimal.min(d, game.enemyHpMax.mul(TRAIT_HIT_CAP).ceil());
+    return d;
+  }
+
   function enemyForFloor(floor) {
+    if (isGuardianFloor(floor)) return guardianForFloor(floor);
     if (floor === FINAL_FLOOR) return Object.assign({ isBoss: true, isMidBoss: false }, FINAL_BOSS);
     if (floor % 10 === 0) return Object.assign({ isBoss: true, isMidBoss: true }, MID_BOSS);
     return Object.assign({ isBoss: false, isMidBoss: false }, ENEMY_ROSTER[(floor - 1) % 10]);
@@ -311,6 +366,7 @@
       trialsCleared: {}, // 苦難 id -> true once beaten (its reward is permanent)
       treeExt: {}, // 拡張強化 id -> level; bought with souls, reset by reincarnation like the basic tree
       items: {}, // 秘宝 id -> copies owned; bought from the floor-clear merchant, kept until the next reincarnation
+      itemAwaken: {}, // 秘宝 id -> 覚醒 level (bought once that 秘宝 is at its cap); reset by reincarnation too
       autoPlay: { on: false, loop: false, speed: 1 }, // オート (battle + next floor) / 周回 (auto retry) / 演出の速さ
     };
   }
@@ -330,12 +386,15 @@
         remnantTree: Object.assign({}, parsed.remnantTree || {}),
         treeExt: Object.assign({}, parsed.treeExt || {}),
         items: Object.assign({}, parsed.items || {}),
+        itemAwaken: Object.assign({}, parsed.itemAwaken || {}),
         autoPlay: Object.assign({ on: false, loop: false, speed: 1 }, parsed.autoPlay || {}),
         trialsCleared: Object.assign({}, parsed.trialsCleared || {}),
         remnantDecks: Array.isArray(parsed.remnantDecks) ? parsed.remnantDecks : [],
-        // draw cards are disabled for now; strip any that survived in an older save
-        deckDefs: loadedDeckDefs.filter((d) => d.type !== "draw"),
+        deckDefs: loadedDeckDefs,
       });
+      sanitizeSave(merged);
+      // draw cards are disabled for now; strip any that survived in an older save
+      merged.deckDefs = merged.deckDefs.filter((d) => d.type !== "draw");
       // one-time migration: startCards nodes used to grant their cards fresh every run instead
       // of permanently; backfill anything already unlocked so it isn't silently lost.
       if (!parsed.startCardsBackfilled) {
@@ -357,8 +416,97 @@
       merged.stats.maxHit = toDecimal(merged.stats.maxHit);
       return merged;
     } catch (e) {
+      // never let a save that failed to load be overwritten by the fresh one on the next persistSave():
+      // keep its text aside (shown as a notice at start-up, see Init)
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) { localStorage.setItem(STORAGE_KEY + ".broken", raw); brokenSaveKept = true; }
+      } catch (e2) { /* ignore */ }
       return defaultSave();
     }
+  }
+  let brokenSaveKept = false;
+
+  // A save can come from another device or another person (データ管理の読み込み・クラウドの復元), so every value that
+  // reaches the page or a loop is forced back to the type the game expects. Card names are escaped wherever they
+  // are shown (escapeHtml). Unknown cards are kept: an old but legitimate card must never be thrown away.
+  // Runs inside loadSave(), i.e. before most definitions below exist -- so it only touches plain data; the ranges
+  // that need the definitions (panel tiers, 秘宝 caps, …) are clamped later by clampSaveToDefinitions().
+  function toInt(v, min, max, fallback) {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+  }
+  function toNum(v, fallback) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function sanitizeCardDef(d) {
+    if (!d || typeof d !== "object") return null;
+    const out = { type: String(d.type || "attack").slice(0, 20), name: String(d.name == null ? "?" : d.name).slice(0, 40), count: toInt(d.count, 0, 999, 1) };
+    if (d.value != null) out.value = toNum(d.value, 0);
+    if (d.active != null) out.active = toInt(d.active, 0, 999, out.count);
+    if (d.rank != null) out.rank = toInt(d.rank, 0, 99999, 0);
+    if (d.deleteUses != null) out.deleteUses = toInt(d.deleteUses, 0, 99999, 0);
+    if (d.critRateBonus != null) out.critRateBonus = toNum(d.critRateBonus, 0);
+    if (d.critDmgBonus != null) out.critDmgBonus = toNum(d.critDmgBonus, 0);
+    if (Array.isArray(d.randomValues)) out.randomValues = d.randomValues.slice(0, 8).map((v) => toNum(v, 1));
+    if (d.calc != null) out.calc = String(d.calc).slice(0, 20);
+    if (Array.isArray(d.tags)) out.tags = d.tags.slice(0, 8).map((v) => String(v).slice(0, 20));
+    if (d.targetTag != null) out.targetTag = String(d.targetTag).slice(0, 20);
+    return out;
+  }
+  function sanitizeNumberMap(m, max) {
+    const out = {};
+    Object.keys(m || {}).slice(0, 2000).forEach((k) => { out[String(k).slice(0, 60)] = toInt(m[k], 0, max, 0); });
+    return out;
+  }
+  function sanitizeFlagMap(m) {
+    const out = {};
+    Object.keys(m || {}).slice(0, 2000).forEach((k) => { if (m[k]) out[String(k).slice(0, 60)] = true; });
+    return out;
+  }
+  function sanitizeSave(s) {
+    const cards = (list) => (Array.isArray(list) ? list.slice(0, 200).map(sanitizeCardDef).filter(Boolean) : []);
+    s.deckDefs = cards(s.deckDefs);
+    s.remnantDecks = (Array.isArray(s.remnantDecks) ? s.remnantDecks : []).slice(0, 12).map(cards);
+    s.panelLevels = sanitizeNumberMap(s.panelLevels, 1e6);
+    s.treeExt = sanitizeNumberMap(s.treeExt, 1e6);
+    s.items = sanitizeNumberMap(s.items, 1e3);
+    s.itemAwaken = sanitizeNumberMap(s.itemAwaken, 1e3);
+    s.cardShopPurchases = sanitizeNumberMap(s.cardShopPurchases, 1e6);
+    ["unlockedNodes", "panelSpecials", "achievements", "trialsCleared", "remnantTree"].forEach((k) => { s[k] = sanitizeFlagMap(s[k]); });
+    const stats = {};
+    Object.keys(s.stats || {}).slice(0, 500).forEach((k) => { stats[String(k).slice(0, 60)] = k === "maxHit" ? s.stats[k] : toNum(s.stats[k], 0); });
+    s.stats = stats;
+    s.points = Math.max(0, toNum(s.points, 0));
+    s.transcendPoints = Math.max(0, toNum(s.transcendPoints, 0));
+    s.trialHeldPoints = Math.max(0, toNum(s.trialHeldPoints, 0));
+    s.level = toInt(s.level, 1, 1e8, 1);
+    s.bestFloor = toInt(s.bestFloor, 0, 1e9, 0);
+    s.bestClearedFloor = toInt(s.bestClearedFloor, 0, 1e9, 0);
+    s.trialComboBest = toInt(s.trialComboBest, 0, 8, 0);
+    s.lastSeen = toNum(s.lastSeen, 0);
+    ["transcendUnlocked", "autoBuyEnabled", "trialPending", "startCardsBackfilled"].forEach((k) => { s[k] = !!s[k]; });
+    const ap = s.autoPlay || {};
+    s.autoPlay = { on: !!ap.on, loop: !!ap.loop, speed: toInt(ap.speed, 1, 4, 1) };
+    if (Array.isArray(s.activeTrials)) s.activeTrials = s.activeTrials.slice(0, 8).map((v) => String(v).slice(0, 20));
+    if (s.activeTrial != null) s.activeTrial = String(s.activeTrial).slice(0, 20);
+    return s;
+  }
+  // the ranges that need the definitions further down; called once at Init, before anything is shown
+  function clampSaveToDefinitions() {
+    PANEL_CATEGORIES.concat(PANEL_CHAINS, [PANEL_MARK]).forEach((c) => {
+      if (save.panelLevels[c.id] > c.maxLevel) save.panelLevels[c.id] = c.maxLevel;
+    });
+    ITEM_DEFS.forEach((d) => {
+      const cap = d.max + ITEM_CHAIN_TIERS.reduce((n, tier) => n + (tier.limit || 0), 0);
+      if (save.items[d.id] > cap) save.items[d.id] = cap;
+    });
+    save.activeTrials = save.activeTrials.filter((id) => TRIALS.some((t) => t.id === id));
+  }
+  // card names (and anything else a save can carry) go through this before they're put into innerHTML
+  function escapeHtml(v) {
+    return String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
   function toDecimal(v) {
     try {
@@ -541,48 +689,55 @@
   // boss while it's active grants its permanent reward (once per 苦難). Rewards are never sealed.
   // 8 directions of restriction, each with 3 levels (★ → ★★★). Level k of every direction opens with
   // tier k of 苦難の門, and also needs level k-1 of that same direction beaten first.
+  // Tuned by measurement (tools/sim/trial-effort.js + sweep.js, AUTO with 自動購入, 3–6 seeds each): the cards it
+  // takes to beat 100F from the state 苦難 open up in, against B = the same climb with no 苦難 (≈1,000 cards).
+  // Targets ★ ≈ B×2–3, ★★ ≈ B×4–6, ★★★ ≈ B×8–12. Measured, most themed rules barely bite in the current game (a
+  // fight is decided by the level multiplier and the other multipliers: 手数 −2, no crit or no card ranks each cost
+  // ≈ ×1.0–1.3), so each 苦難 keeps its own restriction and adds an enemy-HP multiplier (grown in with the floor,
+  // see trialHpMultForFloor) sized so the whole lands on its target. 飢餓 stays souls only: "the merchant sells
+  // nothing" made 91–99F a wall nobody passed (×34+ and not cleared), so it is gone. Rewards are unchanged.
   const TRIAL_CATEGORIES = [
     { id: "hp", name: "堅牢", theme: "敵が硬くなる", levels: [
-      { rules: { hpMult: 5 }, reward: { dmgMult: 2 }, rewardText: "全ダメージ ×2" },
-      { rules: { hpMult: 100 }, reward: { dmgMult: 5 }, rewardText: "全ダメージ ×5" },
-      { rules: { hpMult: 10000 }, reward: { dmgMult: 20 }, rewardText: "全ダメージ ×20" },
+      { rules: { hpMult: 1e4 }, reward: { dmgMult: 2 }, rewardText: "全ダメージ ×2" }, // ×2.4
+      { rules: { hpMult: 3e6 }, reward: { dmgMult: 5 }, rewardText: "全ダメージ ×5" }, // ×4.3
+      { rules: { hpMult: 3e9 }, reward: { dmgMult: 20 }, rewardText: "全ダメージ ×20" }, // ×11
     ] },
     { id: "atk", name: "鈍刃", theme: "攻撃力が下がる", levels: [
-      { rules: { atkMult: 0.5 }, reward: { exponent: 0.05 }, rewardText: "累乗 +0.05" },
-      { rules: { atkMult: 0.2 }, reward: { exponent: 0.1 }, rewardText: "累乗 +0.1" },
-      { rules: { atkMult: 0.05 }, reward: { exponent: 0.2 }, rewardText: "累乗 +0.2" },
+      { rules: { atkMult: 0.1, hpMult: 10 }, reward: { exponent: 0.05 }, rewardText: "累乗 +0.05" }, // ×2.2
+      { rules: { atkMult: 0.01, hpMult: 1e3 }, reward: { exponent: 0.1 }, rewardText: "累乗 +0.1" }, // ×4.5
+      { rules: { atkMult: 0.001, hpMult: 1e5 }, reward: { exponent: 0.2 }, rewardText: "累乗 +0.2" }, // ×8.2
     ] },
     { id: "moves", name: "刹那", theme: "手数・手札が減る", levels: [
-      { rules: { nDelta: -1 }, reward: { handDelta: 1 }, rewardText: "初期手札 +1" },
-      { rules: { nDelta: -2 }, reward: { n: 1 }, rewardText: "手数 +1" },
-      { rules: { nDelta: -2, handDelta: -2 }, reward: { n: 1, handDelta: 1 }, rewardText: "手数 +1・初期手札 +1" },
+      { rules: { nDelta: -1, hpMult: 3e3 }, reward: { handDelta: 1 }, rewardText: "初期手札 +1" }, // ×2.5
+      { rules: { nDelta: -2, hpMult: 1e6 }, reward: { n: 1 }, rewardText: "手数 +1" }, // ×5.1
+      { rules: { nDelta: -2, handDelta: -2, hpMult: 1e9 }, reward: { n: 1, handDelta: 1 }, rewardText: "手数 +1・初期手札 +1" }, // ×10.7
     ] },
     { id: "crit", name: "無明", theme: "会心が封じられる", levels: [
-      { rules: { critRateMult: 0.5 }, reward: { critMult: 1.5 }, rewardText: "会心倍率 ×1.5" },
-      { rules: { noCrit: true }, reward: { critMult: 2 }, rewardText: "会心倍率 ×2" },
-      { rules: { noCrit: true, hpMult: 10 }, reward: { critMult: 3 }, rewardText: "会心倍率 ×3" },
+      { rules: { critRateMult: 0.5, hpMult: 3e3 }, reward: { critMult: 1.5 }, rewardText: "会心倍率 ×1.5" }, // ×2.9
+      { rules: { noCrit: true, hpMult: 3e4 }, reward: { critMult: 2 }, rewardText: "会心倍率 ×2" }, // ×5.7
+      { rules: { noCrit: true, hpMult: 3e7 }, reward: { critMult: 3 }, rewardText: "会心倍率 ×3" }, // ×10.7
     ] },
     { id: "econ", name: "飢餓", theme: "お金とソウルが減る", levels: [
-      { rules: { goldMult: 0.5 }, reward: { soulMult: 1.5 }, rewardText: "ソウル獲得 ×1.5" },
-      { rules: { goldMult: 0.25, soulMult: 0.5 }, reward: { soulMult: 2 }, rewardText: "ソウル獲得 ×2" },
-      { rules: { goldMult: 0.1, soulMult: 0.2, noShop: true }, reward: { soulMult: 3, transcendMult: 2 }, rewardText: "ソウル獲得 ×3・転生ポイント獲得 ×2" },
+      { rules: { goldMult: 0.5, soulMult: 0.6 }, reward: { soulMult: 1.5 }, rewardText: "ソウル獲得 ×1.5" }, // ×2.4
+      { rules: { goldMult: 0.25, soulMult: 0.25 }, reward: { soulMult: 2 }, rewardText: "ソウル獲得 ×2" }, // ×5.1
+      { rules: { goldMult: 0.1, soulMult: 0.2 }, reward: { soulMult: 3, transcendMult: 2 }, rewardText: "ソウル獲得 ×3・転生ポイント獲得 ×2" }, // ×11.5
     ] },
     { id: "exp", name: "忘却", theme: "成長が鈍る", levels: [
       // ×2 / ×5 exp were only +4 / +9 levels: worthless. The ★★ one now grows with the level itself
-      { rules: { expMult: 0.5 }, reward: { expMult: 100 }, rewardText: "経験値 ×100" },
-      { rules: { expMult: 0.1 }, reward: { levelMultAdd: 0.002 }, rewardText: "レベル倍率 ×1.025 → ×1.027（1レベルごと）" },
-      { rules: { noLevel: true }, reward: { atkPct: 300 }, rewardText: "攻撃力 +300%" },
+      { rules: { expMult: 0.1, hpMult: 1e3 }, reward: { expMult: 100 }, rewardText: "経験値 ×100" }, // ×2.6
+      { rules: { expMult: 0.01, hpMult: 2e5 }, reward: { levelMultAdd: 0.002 }, rewardText: "レベル倍率 ×1.025 → ×1.027（1レベルごと）" }, // ×3.9 at 1e5, ×6.2 at 3e5
+      { rules: { noLevel: true, hpMult: 1e7 }, reward: { atkPct: 300 }, rewardText: "攻撃力 +300%" }, // ×8.7
     ] },
     { id: "deck", name: "枯渇", theme: "カードが弱る", levels: [
-      { rules: { buffScale: 0.5 }, reward: { buffAdd: 2 }, rewardText: "バフカードの倍率 +2" },
-      { rules: { noRank: true }, reward: { rankMult: 1.5 }, rewardText: "カード強化（ランク）の効果 ×1.5" },
-      { rules: { noRank: true, buffScale: 0.5, handDelta: -1 }, reward: { buffBoost: 1.5 }, rewardText: "バフの上乗せ ×1.5" },
+      { rules: { buffScale: 0.5, hpMult: 3e3 }, reward: { buffAdd: 2 }, rewardText: "バフカードの倍率 +2" }, // ×2.1
+      { rules: { noRank: true, hpMult: 1e6 }, reward: { rankMult: 1.5 }, rewardText: "カード強化（ランク）の効果 ×1.5" }, // ×5.5
+      { rules: { noRank: true, buffScale: 0.5, handDelta: -1, hpMult: 3e8 }, reward: { buffBoost: 1.5 }, rewardText: "バフの上乗せ ×1.5" }, // ×10.4
     ] },
     { id: "tree", name: "束縛", theme: "基本強化が封じられる", levels: [
-      { rules: { noFinalMult: true }, reward: { dmgMult: 1.5 }, rewardText: "全ダメージ ×1.5" },
+      { rules: { noFinalMult: true, hpMult: 100 }, reward: { dmgMult: 1.5 }, rewardText: "全ダメージ ×1.5" }, // ×3.1
       // was 基本強化の攻撃力 ×3: the tree's ~1,000 atk is nothing next to the panel's late on; its 累乗 is not
-      { rules: { treeAtkMult: 0.25 }, reward: { treeBoost: 1.5 }, rewardText: "基本強化の攻撃力・累乗 ×1.5" },
-      { rules: { treeMult: 0.5, noFinalMult: true }, reward: { exponent: 0.25 }, rewardText: "累乗 +0.25" },
+      { rules: { treeAtkMult: 0.25, hpMult: 3e4 }, reward: { treeBoost: 1.5 }, rewardText: "基本強化の攻撃力・累乗 ×1.5" }, // ×4.9
+      { rules: { treeMult: 0.5, noFinalMult: true, hpMult: 3e6 }, reward: { exponent: 0.25 }, rewardText: "累乗 +0.25" }, // ×8.8
     ] },
   ];
   const TRIAL_LEVEL_NAMES = ["壱", "弐", "参"];
@@ -595,7 +750,7 @@
     const keys = [...new Set(defs.flatMap((d) => Object.keys(d.rules)))];
     const r = Object.fromEntries(keys.map((k) => [k, combineTrialRule(defs, k)]));
     const out = ["転生パネルの効果が封印される（残滓・カードショップ・拡張強化も使えない）"];
-    if (r.hpMult) out.push(`敵のHP ×${fmt(r.hpMult)}（階が進むほど強まり、100階で最大）`);
+    if (r.hpMult) out.push(`敵のHP ×${jpUnitText(r.hpMult)}（100階で最大）`);
     if (r.atkMult) out.push(`攻撃力 ×${r.atkMult}`);
     if (r.nDelta) out.push(`手数 ${r.nDelta}`);
     if (r.handDelta) out.push(`初期手札 ${r.handDelta}`);
@@ -652,7 +807,7 @@
     return mult === 1 ? 1 : Math.pow(mult, Math.min(floor, FINAL_FLOOR) / FINAL_FLOOR);
   }
   function enemyHpForFloor(floor) {
-    const mult = trialHpMultForFloor(floor);
+    const mult = trialHpMultForFloor(floor) * (isGuardianFloor(floor) ? GUARDIAN_HP_MULT : 1);
     return mult === 1 ? computeFloorHp(floor) : computeFloorHp(floor).mul(mult).ceil();
   }
 
@@ -716,7 +871,20 @@
     if (i > 0) return PANEL_POS[chain.nodeIds[i - 1]];
     return chain.continues ? PANEL_POS[chain.continues.nodeIds[chain.continues.nodeIds.length - 1]] : PANEL_POS.core;
   }
-  Object.assign(PANEL_POS, foldedArm(PANEL_SPECIALS.map((sp) => sp.id), panelSpokeAngle(7)));
+  // 超越の刻印: one node after the specials that can be bought again and again -- the transcend-point sink that never
+  // runs dry. Each level ×1.5 all damage for ×2.5 the price, so damage grows only as cost^0.44: a multiplier
+  // never changes the slope against enemy HP (unlike 累乗), so it can't run away. Not part of the magic circle's
+  // progress or of 一括購入 (so it never eats the points meant for the rest). Sealed during a 苦難 like the panel.
+  const PANEL_MARK = { id: "panelMark", label: "超越の刻印", baseCost: 1e7, costMult: 2.5, step: 1.5, maxLevel: 800 };
+  function markLevelRaw() { return save.panelLevels[PANEL_MARK.id] || 0; }
+  function markLevel() { return trialSealed() ? 0 : markLevelRaw(); }
+  function markCost() { return Math.ceil(PANEL_MARK.baseCost * Math.pow(PANEL_MARK.costMult, markLevelRaw())); }
+  function markState() {
+    if (!PANEL_SPECIALS.every(panelSpecialOwned)) return "locked";
+    if (markLevelRaw() >= PANEL_MARK.maxLevel) return "unlocked";
+    return save.transcendPoints >= markCost() ? "available" : "unaffordable";
+  }
+  Object.assign(PANEL_POS, foldedArm(PANEL_SPECIALS.map((sp) => sp.id).concat([PANEL_MARK.id]), panelSpokeAngle(7)));
 
   const PANEL_EDGE_PAD = 90;
   const { width: PANEL_CANVAS_WIDTH, height: PANEL_CANVAS_HEIGHT } =
@@ -879,6 +1047,10 @@
       shopOffers: null,
       shopRerollsUsed: 0,
       shopBuyCounts: {}, // shop potion id -> times bought this run (price growth / per-run caps)
+      runStartedAt: performance.now(), // these four feed the play data (run_end) and the 苦難 effort measurements
+      cardsPlayed: 0,
+      autoCardsPlayed: 0,
+      floorsCleared: 0,
     };
     startFloor(floor);
   }
@@ -894,7 +1066,8 @@
     return Math.max(1, Math.min(want, runDeckSize() - 2));
   }
   function currentStartN() {
-    return Math.max(1, BASE_N + treeBonus("n") + panelBonus("n") + (game.runNBonus || 0) + trialRule("nDelta", 0) + trialRewardSum("n") + itemSum("n"));
+    return Math.max(1, BASE_N + treeBonus("n") + panelBonus("n") + (game.runNBonus || 0) + trialRule("nDelta", 0) + trialRewardSum("n") + itemSum("n")
+      - (hasTrait("miasma") ? 1 : 0));
   }
   function goldMultiplier() {
     return (1 + (treeBonus("goldPct") + panelBonus("goldPct") + achievementBonus("goldPct") + treeExtBonus("goldPct") + (game.runGoldPctBonus || 0)) / 100) * trialRule("goldMult", 1) * itemProduct("goldMult");
@@ -919,12 +1092,15 @@
       + (panelSpecialOn("panelDmgFormula") ? 0.2 : 0) + trialRewardSum("exponent") + itemSum("exponent");
   }
   // applied outside the exponent: 闘気 nodes (×1.1…×1.3 each) and 魂の昇華
-  function finalDamageMult() {
-    let m = treeExtProduct("dmgMult") * trialRewardProduct("dmgMult") * itemProduct("dmgMult");
+  function toukiMult() {
+    let m = 1;
     NODES.forEach((node) => {
       if (save.unlockedNodes[node.id] && node.effect && node.effect.finalMult && !trialRule("noFinalMult", false)) m *= 1 + node.effect.finalMult;
     });
     return m;
+  }
+  function finalDamageMult() {
+    return toukiMult() * treeExtProduct("dmgMult") * trialRewardProduct("dmgMult") * itemProduct("dmgMult") * Math.pow(PANEL_MARK.step, markLevel());
   }
   function damageMultiplier() {
     return levelDamageMult().mul(Math.max(MIN_BUFF_MULTIPLIER, currentBaseMult() + game.buffBonus)).pow(currentExponent()).mul(finalDamageMult());
@@ -1135,11 +1311,17 @@
     { id: "idle8h", name: "眠れる塔", desc: "8時間分の放置収入を一度に受け取る", hidden: true, test: () => stat("maxIdleMinutes") >= 480, bonus: { soulPct: 20 } },
     { id: "staffGlow", name: "杖の目覚め", desc: "タイトルの杖に触れて光らせる", hidden: true, test: () => stat("staffTouches") >= 1, bonus: { atkPct: 3 } },
     { id: "staffGlow50", name: "魔力の共鳴", desc: "タイトルの杖を50回光らせる", hidden: true, test: () => stat("staffTouches") >= 50, bonus: { soulPct: 5 } },
+    { id: "mark10", name: "超越の刻印", desc: "超越の刻印をLv.10にする", test: () => markLevelRaw() >= 10, bonus: { atkPct: 100 } },
+    // ---- 深層 ----
+    { id: "guardian1", name: "守護者を討つ", desc: "深層の守護者（200階・300階…）を倒す", test: () => stat("guardianKills") >= 1, bonus: { atkPct: 60 } },
+    { id: "guardian10", name: "深淵の征服者", desc: "深層の守護者を合計10体倒す", test: () => stat("guardianKills") >= 10, bonus: { atkPct: 150 } },
+    { id: "trait100", name: "異能狩り", desc: "特性を持つ敵を合計100体倒す", test: () => stat("traitKills") >= 100, bonus: { soulPct: 40 } },
     // ---- 秘宝 ----
     { id: "item1", name: "秘宝の発見", desc: "商人から秘宝を買う", test: () => stat("itemsBought") >= 1, bonus: { goldPct: 30 } },
     { id: "item5", name: "秘宝の蒐集家", desc: "1回の転生のあいだに秘宝を5個持つ", test: () => itemsOwnedTotal() >= 5, bonus: { atkPct: 40 } },
     { id: "item15", name: "宝物庫の主", desc: "1回の転生のあいだに秘宝を15個持つ", test: () => itemsOwnedTotal() >= 15, bonus: { atkPct: 120 } },
-    { id: "itemKinds", name: "万宝の目利き", desc: "全種類の秘宝を同時に持つ", test: () => ITEM_DEFS.every((d) => itemCount(d) > 0), bonus: { atkPct: 200 } },
+    { id: "itemKinds", name: "万宝の目利き", desc: "伝説の秘宝を除く全種類の秘宝を同時に持つ", test: () => ITEM_DEFS.every((d) => d.legendary || itemCount(d) > 0), bonus: { atkPct: 200 } },
+    { id: "itemAwaken10", name: "目覚める秘宝", desc: "秘宝を合計10回覚醒させる", test: () => stat("itemsAwakened") >= 10, bonus: { goldPct: 100 } },
     { id: "itemBought30", name: "商人の上客", desc: "秘宝を通算30個買う", test: () => stat("itemsBought") >= 30, bonus: { soulPct: 30 } },
     { id: "itemLegend", name: "混沌を掴む者", desc: "伝説の秘宝「混沌の欠片」を手に入れる", hidden: true, test: () => ITEM_DEFS.some((d) => d.legendary && itemCount(d) > 0), bonus: { atkPct: 100 } },
     // hidden: the only tampering a browser game can actually observe is the clock jumping backwards
@@ -1244,7 +1426,7 @@
       if (game !== thisGame || game.gameOver || game.enemyHp.lte(0) || !r.cards.length) return;
       const def = r.cards[r.next % r.cards.length];
       r.next += 1;
-      const dmg = remnantHitDamage(def, playerHit);
+      const dmg = applyTraitsToHit(remnantHitDamage(def, playerHit), false);
       hitEnemy(dmg, false);
       addLog(`${r.name}の${def.name}：${fmt(dmg)} ダメージ`, "remnant");
       floatDamage(dmg, false, true);
@@ -1314,7 +1496,7 @@
   // restriction scaling only the bonus part (so ×3 at ×0.5 becomes ×2, never below ×1)
   function buffApplied(cardMult) {
     const bonus = cardMult + panelBonus("buffAdd") + trialRewardSum("buffAdd") + itemSum("buffAdd") - 1;
-    return 1 + bonus * trialRule("buffScale", 1) * trialRewardProduct("buffBoost");
+    return 1 + bonus * trialRule("buffScale", 1) * trialRewardProduct("buffBoost") * (hasTrait("curse") ? 0.5 : 1);
   }
   function effectiveValue(card) {
     const rank = trialRule("noRank", false) ? 0 : (card.rank || 0) * trialRewardProduct("rankMult");
@@ -1335,7 +1517,10 @@
   function startFloor(floor) {
     game.floor = floor;
     debugTopUp();
+    game.traits = rollTraits(floor);
+    game.phantomUsed = false;
     game.enemyHpMax = enemyHpForFloor(floor);
+    if (game.traits.includes("frenzy")) game.enemyHpMax = game.enemyHpMax.mul(2);
     game.enemyHp = game.enemyHpMax;
     game.n = currentStartN();
     game.floorStartN = game.n;
@@ -1369,6 +1554,7 @@
     homePointsLabel: document.getElementById("homePointsLabel"),
     openFloorSelectBtn: document.getElementById("openFloorSelectBtn"),
     resetProgressBtn: document.getElementById("resetProgressBtn"),
+    openDataBtn: document.getElementById("openDataBtn"),
     openTreeBtn: document.getElementById("openTreeBtn"),
     openDeckUpgradeBtn: document.getElementById("openDeckUpgradeBtn"),
     openCardShopBtn: document.getElementById("openCardShopBtn"),
@@ -1393,12 +1579,16 @@
     battleSide: document.getElementById("battleSide"),
     enemyVisual: document.getElementById("enemyVisual"),
     enemyName: document.getElementById("enemyName"),
+    enemyTraits: document.getElementById("enemyTraits"),
     enemyHpNow: document.getElementById("enemyHpNow"),
     enemyHpMax: document.getElementById("enemyHpMax"),
     enemyBar: document.getElementById("enemyBar"),
     statN: document.getElementById("statN"),
     statAtk: document.getElementById("statAtk"),
     statBuff: document.getElementById("statBuff"),
+    breakdownPanel: document.getElementById("breakdownPanel"),
+    breakdownBody: document.getElementById("breakdownBody"),
+    breakdownClose: document.getElementById("breakdownClose"),
     log: document.getElementById("log"),
     hand: document.getElementById("hand"),
     handCount: document.getElementById("handCount"),
@@ -1715,6 +1905,7 @@
     let m = 1;
     if (enemyForFloor(game.floor).isBoss) m *= itemProduct("bossMult");
     if (!game.firstHitDone) m *= itemProduct("firstMult");
+    if (game.traits && game.traits.length) m *= itemProduct("traitMult");
     return m;
   }
 
@@ -1737,8 +1928,11 @@
       const mult = damageMultiplier();
       const isCrit = card.forceCrit || rollCrit(card.critRateBonus);
       const critMult = isCrit ? critMultiplier(card.critDmgBonus) : 1;
-      const dmg = roundDamage(mult.mul(attackBaseDamage(card)).mul(critMult).mul(situationalItemMult()));
+      const phantom = hasTrait("phantom") && !game.phantomUsed;
+      const dmg = phantom ? new Decimal(0) : applyTraitsToHit(roundDamage(mult.mul(attackBaseDamage(card)).mul(critMult).mul(situationalItemMult())), isCrit);
+      game.phantomUsed = true;
       game.firstHitDone = true;
+      if (phantom) addLog("幻影をすり抜けた…（この階の最初の一撃は外れる）", "info");
       hitEnemy(dmg);
       noteCrit(isCrit);
       const multNote = !mult.eq(1) ? `（倍率×${fmtMult(mult)}）` : "";
@@ -1752,8 +1946,9 @@
       // far enemy HP has scaled, which skips the whole point of an incremental HP curve. It neither
       // extends nor breaks a crit streak.
       const pct = effectiveValue(card);
-      const dmg = roundDamage(game.enemyHpMax.mul(pct));
       game.percentUsed = true;
+      if (hasTrait("mirror")) { addLog(`${card.name}：鏡面に弾かれた（この敵には効かない）`, "info"); return; }
+      const dmg = roundDamage(game.enemyHpMax.mul(pct));
       hitEnemy(dmg, false); // not a lastHit: remnants following up a % of max HP one-shot every floor
       addLog(`${card.name}：敵の最大HPの${Math.round(pct * 100)}%、${fmt(dmg)} ダメージ！`, "percent");
       floatDamage(dmg, false);
@@ -1774,7 +1969,9 @@
       addLog(`${card.name}：次の攻撃カードの倍率が×${fmtMult(damageMultiplier())}に！`, "buff");
     } else if (card.type === "poison") {
       // a status flag, not a stacking counter: playing this again while already poisoned does nothing extra
-      if (game.enemyPoisoned) {
+      if (hasTrait("mirror")) {
+        addLog(`${card.name}：鏡面に弾かれた（この敵には効かない）`, "info");
+      } else if (game.enemyPoisoned) {
         addLog(`${card.name}：敵は既に毒状態だ（効果は重複しない）`, "info");
       } else {
         game.enemyPoisoned = true;
@@ -1785,8 +1982,11 @@
       const isCrit = rollCrit();
       const critMult = isCrit ? critMultiplier() : 1;
       const raw = specialCardRaw(card);
-      const dmg = roundDamage(mult.mul(raw).mul(critMult).mul(situationalItemMult()));
+      const phantom = hasTrait("phantom") && !game.phantomUsed;
+      const dmg = phantom ? new Decimal(0) : applyTraitsToHit(roundDamage(mult.mul(raw).mul(critMult).mul(situationalItemMult())), isCrit);
+      game.phantomUsed = true;
       game.firstHitDone = true;
+      if (phantom) addLog("幻影をすり抜けた…（この階の最初の一撃は外れる）", "info");
       hitEnemy(dmg);
       noteCrit(isCrit);
       const multNote = !mult.eq(1) ? `（倍率×${fmtMult(mult)}）` : "";
@@ -1855,6 +2055,9 @@
       const idx = game.hand.findIndex((c) => c.uid === uid);
       if (idx === -1) return;
       game.hand.splice(idx, 1);
+      game.cardsPlayed += 1;
+      if (card.byAuto) game.autoCardsPlayed += 1;
+      bumpStat("cardsPlayed");
 
       resolveCardEffect(card);
       applyPoisonTick();
@@ -1892,9 +2095,18 @@
     el.enemyHpUnit.textContent = game.enemyHpMax.gte(1e4) ? `（最大HP ${jpUnitText(game.enemyHpMax)}）` : "";
   }
 
+  // a hand with nothing usable (only 処刑の火 already spent this floor) used to freeze the floor with moves left
+  function hasPlayableCard() { return game.hand.some((c) => !(c.type === "percent" && game.percentUsed)); }
   function checkResult() {
-    if (game.enemyHp.lte(0)) onFloorWin();
-    else if (game.n <= 0) onFloorLoss();
+    if (game.enemyHp.lte(0)) { onFloorWin(); return; }
+    if (game.n <= 0) { onFloorLoss("defeat"); return; }
+    if (hasTrait("regen") && game.enemyHp.lt(game.enemyHpMax)) {
+      const heal = Decimal.min(game.enemyHpMax.sub(game.enemyHp), game.enemyHpMax.mul(TRAIT_REGEN).ceil());
+      game.enemyHp = game.enemyHp.add(heal);
+      addLog(`再生：敵のHPが ${fmt(heal)} 回復した`, "info");
+      updateEnemyHpDisplay();
+    }
+    if (!hasPlayableCard()) { addLog("打つ手がない…", "dmg"); onFloorLoss("stuck"); }
   }
 
   // points earned = sum of the floor numbers of every monster actually defeated this run
@@ -1913,7 +2125,17 @@
     const thisGame = game;
     el.enemyVisual.classList.add("defeated");
     addLog(`敵を撃破した！`, "info");
-    game.floorPointsSum += game.floor;
+    const enemyNow = enemyForFloor(game.floor);
+    const traitCount = (game.traits || []).length;
+    // 特性 ×1.5 souls (×2 with two), 守護者 ×3 -- floorPointsSum is paid out as souls when the run ends
+    game.floorPointsSum += game.floor * (enemyNow.isGuardian ? GUARDIAN_SOUL_MULT : 1 + 0.5 * traitCount);
+    if (traitCount) bumpStat("traitKills");
+    if (enemyNow.isGuardian) { bumpStat("guardianKills"); game.guaranteedItem = true; }
+    game.floorsCleared += 1;
+    if (game.floor > stat("maxCleared") && (game.floor <= FINAL_FLOOR ? game.floor % 10 === 0 : game.floor % 100 === 0)) {
+      track("milestone", { floor: game.floor, playMin: playMinutes(), lv: save.level, reinc: stat("reincarnations") });
+    }
+    if (game.floor === FINAL_FLOOR && !stat("bossKills")) track("first_clear", { playMin: playMinutes(), runs: stat("runs"), lv: save.level });
     save.bestClearedFloor = Math.max(save.bestClearedFloor, game.floor);
     bumpStat("kills");
     if (game.n === 0) bumpStat("lastMoveWins");
@@ -1923,7 +2145,9 @@
     // transcend points no longer come from endless floors: they're paid out on reincarnation from
     // the level reached (see reincarnateNow), and every kill feeds that level
     const levelBefore = save.level;
-    const levelsGained = gainExp(game.enemyHpMax.mul(EXP_PER_ENEMY_HP));
+    // exp follows the enemy's HP -- but not a 苦難's HP multiplier: 堅牢★★★'s ×1万 used to hand out ×1万 exp too,
+    // so the climb paid for itself (Lv131 instead of Lv77 at the boss) and the 苦難 barely cost anything
+    const levelsGained = gainExp(game.enemyHpMax.div(trialHpMultForFloor(game.floor)).mul(EXP_PER_ENEMY_HP));
     if (levelsGained) addLog(`レベルアップ！ Lv.${save.level}`, "levelup");
     checkAchievements();
 
@@ -1944,7 +2168,7 @@
     } else {
       save.bestFloor = Math.max(save.bestFloor, game.floor);
       persistSave();
-      const goldGain = Math.ceil((10 + game.floor * 3) * goldMultiplier() - 1e-9);
+      const goldGain = Math.ceil((10 + game.floor * 3) * goldMultiplier() * (hasTrait("frenzy") ? 2 : 1) - 1e-9);
       game.gold += goldGain;
       setTimeout(() => { if (game === thisGame) openFloorClear(goldGain, levelBefore, levelsGained); }, spd(KILL_PAUSE_MS));
     }
@@ -1957,6 +2181,7 @@
   }
   function completeTrial() {
     const defs = activeTrialDefs();
+    if (defs.length) track("trial", { op: "clear", ids: defs.map((t) => t.id), playMin: playMinutes() });
     save.activeTrials = [];
     releaseHeldPoints();
     if (!defs.length) return;
@@ -1977,8 +2202,9 @@
     el.trialClearNote.textContent = text;
   }
 
-  function onFloorLoss() {
+  function onFloorLoss(cause) {
     game.gameOver = true;
+    trackRunEnd(cause || "defeat");
     addLog(`手数が尽きた。塔から追い出される…`, "dmg");
     const gained = awardRunEndPoints(); // the floor they died on was never added to floorPointsSum
     el.defeatFloor.textContent = game.floor;
@@ -1990,6 +2216,7 @@
 
   function onRetreat() {
     game.gameOver = true;
+    trackRunEnd("retreat");
     const gained = awardRunEndPoints(); // the current floor's monster was already added when it was cleared
     el.retreatFloor.textContent = game.floor;
     el.retreatPoints.textContent = fmt(gained);
@@ -2024,7 +2251,9 @@
   // progress (souls, basic tree, deck, level) and drops the player into the panel. The panel,
   // transcend points, achievements and everything remnant-related survive.
   function reincarnateNow() {
-    save.transcendPoints += transcendGainForLevel(save.level);
+    const gainedTp = transcendGainForLevel(save.level);
+    track("reincarnate", { lv: save.level, tp: gainedTp, reinc: stat("reincarnations") + 1, best: stat("maxCleared"), playMin: playMinutes() });
+    save.transcendPoints += gainedTp;
     save.activeTrials = []; // unfinished 苦難 end with the loop
     save.trialHeldPoints = 0;
     save.trialPending = true; // leaving the panel offers the 苦難 screen (if any are unlocked)
@@ -2036,6 +2265,7 @@
     save.unlockedNodes = {};
     save.treeExt = {};
     save.items = {};
+    save.itemAwaken = {};
     save.deckDefs = cloneDeckDefs(BASE_DECK_DEFS);
     save.cardShopPurchases = {}; // the bought copies were just wiped from the deck, so their price climb goes too
     save.bestFloor = 0;
@@ -2043,6 +2273,7 @@
     persistSave();
     game = null;
     openPanel(false);
+    cloudUpload({ force: true });
   }
 
   el.defeatToHomeBtn.addEventListener("click", () => { game = null; showScreen("home"); renderHome(); });
@@ -2094,13 +2325,24 @@
     { id: "soulGrail", name: "魂喰らいの杯", desc: "ソウル獲得 ×{v}", key: "soulMult", value: 2, max: 2, weight: 0.8, price: 1 },
     { id: "sageTome", name: "叡智の古書", desc: "経験値 ×{v}", key: "expMult", value: 3, max: 2, weight: 0.8, price: 1 },
     { id: "chaosShard", name: "混沌の欠片", desc: "全ダメージ ×{v}", key: "dmgMult", value: 30, max: 1, weight: 0.08, price: 3, legendary: true },
+    // only sold past 100F, where the 特性 are
+    { id: "wardCharm", name: "破魔の護符", desc: "特性を持つ敵へのダメージ ×{v}", key: "traitMult", value: 4, max: 2, weight: 0.8, price: 1, deepOnly: true },
   ];
+  // 秘宝の覚醒: a 秘宝 held at its cap comes back to the merchant as "〇〇の覚醒": each level adds +50% to that one
+  // 秘宝's effect (like 秘宝の契約's 効果+%), at its next-copy price ×3 per level. Kept until the next reincarnation.
+  // Only multiplying 秘宝 awaken: 累乗 could run away (it multiplies the level curve), 手数 is a count, 会心率 caps at
+  // 100%, and the 腕輪's +buff adds up without end.
+  const ITEM_AWAKEN_STEP = 0.5;
+  const ITEM_AWAKEN_PRICE_GROWTH = 3;
+  function itemAwakenable(def) { return !def.additive && !def.flat; }
+  function itemAwakenLevel(def) { return (save.itemAwaken && save.itemAwaken[def.id]) || 0; }
   function itemCount(def) { return save.items[def.id] || 0; }
   function itemMax(def) { return def.max + itemChainBonus("limit"); }
   function itemPower() { return itemChainBonus("power") / 100; }
-  function itemValue(def) {
+  function itemValue(def, awakenExtra) {
     if (def.flat) return def.value;
-    return def.additive ? def.value * (1 + itemPower()) : 1 + (def.value - 1) * (1 + itemPower());
+    if (def.additive) return def.value * (1 + itemPower());
+    return 1 + (def.value - 1) * (1 + itemPower() + ITEM_AWAKEN_STEP * (itemAwakenLevel(def) + (awakenExtra || 0)));
   }
   function itemDescText(def) { return def.desc.replace("{v}", fmtMult(itemValue(def))); }
   function itemSum(key) {
@@ -2113,25 +2355,48 @@
   function itemChance() { return ITEM_BASE_CHANCE * (1 + itemChainBonus("rate") / 100); }
   // each further copy of the same 秘宝 costs ×2; the base follows the floor like the potions do
   function itemCost(def) { return Math.ceil((60 + game.floor * 12) * def.price * Math.pow(2, itemCount(def))); }
+  function itemAwakenCost(def) { return Math.ceil(itemCost(def) * Math.pow(ITEM_AWAKEN_PRICE_GROWTH, itemAwakenLevel(def))); }
+  // one pool entry per 秘宝: a new copy while below the cap, its 覚醒 once at the cap
+  function itemOfferPool() {
+    return ITEM_DEFS.filter((d) => (!d.needsRemnant || activeRemnantCount() > 0) && (!d.deepOnly || game.floor > FINAL_FLOOR))
+      .filter((d) => itemCount(d) < itemMax(d) || itemAwakenable(d))
+      .map((d) => ({ def: d, weight: d.weight, awaken: itemCount(d) >= itemMax(d) }));
+  }
   function rollItemOffers() {
     game.itemOffers = [];
     if (trialRule("noShop", false)) return;
-    const pool = ITEM_DEFS.filter((d) => itemCount(d) < itemMax(d) && (!d.needsRemnant || activeRemnantCount() > 0));
+    const pool = itemOfferPool();
     const slots = 1 + itemChainBonus("slots");
+    const guaranteed = !!game.guaranteedItem;
+    game.guaranteedItem = false;
     for (let i = 0; i < slots; i++) {
-      if (!(DEBUG_MODE && i === 0) && Math.random() >= itemChance()) continue;
-      const pick = pickWeighted(pool.filter((d) => !game.itemOffers.some((o) => o.def === d)), 1)[0];
-      if (pick) game.itemOffers.push({ def: pick, cost: itemCost(pick), bought: false });
+      if (!(DEBUG_MODE && i === 0) && !(guaranteed && i === 0) && Math.random() >= itemChance()) continue;
+      const pick = pickWeighted(pool.filter((e) => !game.itemOffers.some((o) => o.def === e.def)), 1)[0];
+      if (pick) game.itemOffers.push({ def: pick.def, awaken: pick.awaken, cost: pick.awaken ? itemAwakenCost(pick.def) : itemCost(pick.def), bought: false });
     }
     if (game.itemOffers.length) bumpStat("itemsSeen", game.itemOffers.length);
   }
   function buyItemOffer(offer) {
     debugTopUp();
-    if (offer.bought || game.gold < offer.cost || itemCount(offer.def) >= itemMax(offer.def)) return false;
+    if (offer.bought || game.gold < offer.cost) return false;
+    if (offer.awaken) {
+      game.gold -= offer.cost;
+      save.itemAwaken[offer.def.id] = itemAwakenLevel(offer.def) + 1;
+      offer.bought = true;
+      bumpStat("itemsAwakened");
+      track("item", { id: offer.def.id, floor: game.floor, awaken: itemAwakenLevel(offer.def) });
+      addLog(`秘宝の覚醒：${offer.def.name}（覚醒${itemAwakenLevel(offer.def)}・${itemDescText(offer.def)}）`, "levelup");
+      showToast(`秘宝「${offer.def.name}」が覚醒した！ 覚醒${itemAwakenLevel(offer.def)}：${itemDescText(offer.def)}（次の転生まで有効）`);
+      checkAchievements();
+      persistSave();
+      return true;
+    }
+    if (itemCount(offer.def) >= itemMax(offer.def)) return false;
     game.gold -= offer.cost;
     save.items[offer.def.id] = itemCount(offer.def) + 1;
     offer.bought = true;
     bumpStat("itemsBought");
+    track("item", { id: offer.def.id, floor: game.floor });
     addLog(`秘宝を入手：${offer.def.name}（${itemDescText(offer.def)}）`, "levelup");
     showToast(`秘宝「${offer.def.name}」を手に入れた！ ${itemDescText(offer.def)}（次の転生まで有効）`);
     checkAchievements();
@@ -2139,7 +2404,8 @@
     return true;
   }
   function ownedItemsText() {
-    return ITEM_DEFS.filter((d) => itemCount(d) > 0).map((d) => `${d.name}${itemCount(d) > 1 ? "×" + itemCount(d) : ""}`).join("・");
+    return ITEM_DEFS.filter((d) => itemCount(d) > 0)
+      .map((d) => `${d.name}${itemCount(d) > 1 ? "×" + itemCount(d) : ""}${itemAwakenLevel(d) ? `（覚醒${itemAwakenLevel(d)}）` : ""}`).join("・");
   }
 
   function shopBuyCount(opt) { return game.shopBuyCounts[opt.id] || 0; }
@@ -2217,8 +2483,8 @@
       const rankLabel = def.rank ? ` / Lv.${def.rank}` : "";
       row.innerHTML = `
         <div class="dz-info">
-          <div class="dz-name">${def.name}</div>
-          <div class="dz-meta">${TYPE_LABELS[def.type] || def.type} / 所持${def.count}枚${rankLabel}</div>
+          <div class="dz-name">${escapeHtml(def.name)}</div>
+          <div class="dz-meta">${TYPE_LABELS[def.type] || escapeHtml(def.type)} / 所持${def.count}枚${rankLabel}</div>
         </div>
         <div class="dz-active">
           <button class="dz-btn" ${canDec ? "" : "disabled"} data-action="activeDown">−</button>
@@ -2335,8 +2601,12 @@
       const affordable = !offer.bought && game.gold >= offer.cost;
       div.className = "option-card item-offer" + (offer.def.legendary ? " legendary" : "") + (offer.bought || !affordable || autoBuyRunning ? " disabled" : "");
       const owned = itemCount(offer.def);
-      div.innerHTML = `<div class="oc-tag">${offer.def.legendary ? "伝説の秘宝" : "秘宝"}</div><div class="oc-name">${offer.def.name}</div>`
-        + `<div class="oc-desc">${itemDescText(offer.def)}<br><small>次の転生まで有効・所持 ${owned}/${itemMax(offer.def)}</small></div>`
+      const body = offer.awaken
+        ? `${offer.def.desc.replace("{v}", fmtMult(itemValue(offer.def)))} → ${offer.def.desc.replace("{v}", fmtMult(itemValue(offer.def, 1)))}（1つあたり）<br><small>覚醒 ${itemAwakenLevel(offer.def)} → ${itemAwakenLevel(offer.def) + 1}・次の転生まで有効</small>`
+        : `${itemDescText(offer.def)}<br><small>次の転生まで有効・所持 ${owned}/${itemMax(offer.def)}</small>`;
+      div.innerHTML = `<div class="oc-tag">${offer.awaken ? "秘宝の覚醒" : offer.def.legendary ? "伝説の秘宝" : "秘宝"}</div>`
+        + `<div class="oc-name">${offer.def.name}${offer.awaken ? "の覚醒" : ""}</div>`
+        + `<div class="oc-desc">${body}</div>`
         + `<div class="oc-cost">${offer.bought ? "購入済み" : fmt(offer.cost) + " G"}</div>`;
       if (!offer.bought && affordable) {
         div.addEventListener("click", () => {
@@ -2456,6 +2726,12 @@
   });
 
   // ---------------- Render: battle ----------------
+  // tapping a 特性 badge explains it (the title tooltip doesn't exist on touch screens)
+  el.enemyTraits.addEventListener("click", (e) => {
+    const b = e.target.closest ? e.target.closest("[data-trait]") : null;
+    const t = b && traitDef(b.dataset.trait);
+    if (t) showToast(`特性「${t.name}」：${t.desc}`);
+  });
   function renderBattle() {
     const enemy = enemyForFloor(game.floor);
     el.floorLabel.textContent = (game.floor > FINAL_FLOOR ? `階層 ${game.floor}（エンドレス）` : `階層 ${game.floor} / ${FINAL_FLOOR}`) + `　Lv.${save.level}`
@@ -2470,6 +2746,19 @@
     if (el.enemyVisual.dataset.art !== enemy.art) {
       el.enemyVisual.dataset.art = enemy.art;
       el.enemyVisual.innerHTML = `<img src="${enemy.art}" alt="${enemy.name}">`;
+    }
+    // 特性 / 守護者: a recolor of the art (the first 特性's, or the guardian's own) and a steady aura in its color
+    const traits = (game.traits || []).map(traitDef).filter(Boolean);
+    const look = enemy.isGuardian ? { filter: enemy.filter, color: traits[0] ? traits[0].color : "#ff8adf" } : traits[0];
+    el.enemyVisual.classList.toggle("has-trait", !!look);
+    el.enemyVisual.classList.toggle("guardian", !!enemy.isGuardian);
+    el.enemyVisual.style.setProperty("--trait-filter", look ? look.filter : "none");
+    el.enemyVisual.style.setProperty("--trait-color", look ? look.color : "transparent");
+    const traitKey = (enemy.isGuardian ? "G" : "") + traits.map((t) => t.id).join(",");
+    if (el.enemyTraits.dataset.key !== traitKey) {
+      el.enemyTraits.dataset.key = traitKey;
+      el.enemyTraits.innerHTML = (enemy.isGuardian ? `<span class="trait-badge guardian-badge">守護者</span>` : "")
+        + traits.map((t) => `<button class="trait-badge" style="--trait-color:${t.color}" data-trait="${t.id}" title="${t.desc}">${t.name}</button>`).join("");
     }
     el.enemyHpNow.textContent = fmt(game.enemyHp);
     el.enemyHpMax.textContent = fmt(game.enemyHpMax);
@@ -2486,6 +2775,7 @@
     el.handCount.textContent = game.hand.length + "枚";
     el.battleGold.textContent = fmt(game.gold);
     renderAutoControls();
+    renderBreakdown();
 
     // FLIP technique: record where every current card (and the deck pile) sits before the
     // rebuild, so cards can visibly slide from their old spot to their new one afterward
@@ -2504,10 +2794,13 @@
       const cardClass = "card " + card.type + (card.playing ? " playing" : "") + (spent ? " spent" : "");
       let typeLabel = TYPE_LABELS[card.type] || "バフ";
       let valueLabel;
-      if (card.type === "attack") valueLabel = fmt(roundDamage(unbuffedDamageMultiplier().mul(attackBaseDamage(card)).mul(situationalItemMult()))) + " dmg";
+      // previews show the no-crit hit after this enemy's 特性 (鉄壁/硬化), and say so when 幻影 will swallow it
+      const phantomNext = hasTrait("phantom") && !game.phantomUsed;
+      if (phantomNext && (card.type === "attack" || card.type === "special")) valueLabel = "幻影で外れる";
+      else if (card.type === "attack") valueLabel = fmt(applyTraitsToHit(roundDamage(unbuffedDamageMultiplier().mul(attackBaseDamage(card)).mul(situationalItemMult())), false)) + " dmg";
       else if (card.type === "draw") valueLabel = "+" + effectiveValue(card) + "枚";
-      else if (card.type === "percent") valueLabel = spent ? "この階は使用済み" : Math.round(effectiveValue(card) * 100) + "%";
-      else if (card.type === "special") valueLabel = fmt(roundDamage(unbuffedDamageMultiplier().mul(specialCardRaw(card)).mul(situationalItemMult()))) + " dmg";
+      else if (card.type === "percent") valueLabel = spent ? "この階は使用済み" : hasTrait("mirror") ? "鏡面で無効" : Math.round(effectiveValue(card) * 100) + "%";
+      else if (card.type === "special") valueLabel = fmt(applyTraitsToHit(roundDamage(unbuffedDamageMultiplier().mul(specialCardRaw(card)).mul(situationalItemMult())), false)) + " dmg";
       else if (card.type === "poison") valueLabel = "猛毒付与";
       else if (card.type === "chain") {
         const count = game.hand.filter((c) => c.uid !== card.uid && c.type !== "chain" && Array.isArray(c.tags) && c.tags.includes(card.targetTag)).length;
@@ -2519,7 +2812,7 @@
       const rankBadge = `<div class="card-rank">${card.rank ? "Lv." + card.rank : ""}</div>`;
       const critNote = `<div class="card-crit-note">${(card.critRateBonus || card.critDmgBonus) ? `会心+${card.critRateBonus || 0}%/ダメ+${card.critDmgBonus || 0}%` : ""}</div>`;
       const keyBadge = handIndex < 9 ? `<div class="card-key">${handIndex + 1}</div>` : "";
-      const contentHtml = `${keyBadge}<div class="card-type">${typeLabel}</div><div class="card-name">${card.name}</div>${rankBadge}<div class="card-value">${valueLabel}</div>${critNote}`;
+      const contentHtml = `${keyBadge}<div class="card-type">${typeLabel}</div><div class="card-name">${escapeHtml(card.name)}</div>${rankBadge}<div class="card-value">${valueLabel}</div>${critNote}`;
 
       if (card.justDrawn) {
         // freshly drawn this render: enters face-down (see the slide-in + delayed flip below)
@@ -2707,7 +3000,7 @@
 
   // the achievements screen groups entries by what they reward you for; hidden ones get their own group
   const ACHIEVEMENT_GROUPS = [
-    ["tower", "塔の踏破", (a) => /^(floor|boss)\d/.test(a.id)],
+    ["tower", "塔の踏破", (a) => /^(floor|boss)\d/.test(a.id) || a.id.startsWith("guardian") || a.id.startsWith("trait1")],
     ["hit", "一撃のダメージ", (a) => a.id.startsWith("hit")],
     ["level", "レベル", (a) => /^lv\d/.test(a.id)],
     ["count", "討伐・挑戦", (a) => a.id.startsWith("kills") || a.id.startsWith("runs")],
@@ -2715,7 +3008,7 @@
     ["reinc", "転生・残滓", (a) => a.id.startsWith("reinc") || a.id.startsWith("remnant")],
     ["trial", "苦難", (a) => a.id.startsWith("trial")],
     ["item", "秘宝", (a) => a.id.startsWith("item")],
-    ["growth", "強化・蓄え", (a) => /^(ext|deck|souls|transcend)/.test(a.id)],
+    ["growth", "強化・蓄え", (a) => /^(ext|deck|souls|transcend|mark)/.test(a.id)],
     ["meta", "実績", (a) => a.id.startsWith("ach")],
   ];
   function achievementGroupOf(a) {
@@ -2784,7 +3077,7 @@
         row.className = "deck-zone-row";
         row.innerHTML = `
           <div class="dz-info">
-            <div class="dz-name">${def.name}</div>
+            <div class="dz-name">${escapeHtml(def.name)}</div>
             <div class="dz-meta">追撃 ${fmtMult(remnantCardShare(def))}% / ${def.count}枚${def.rank ? " / Lv." + def.rank : ""}</div>
           </div>
           <div class="dz-actions"><button class="dz-btn" data-action="rank">強化 ${fmt(cost)}pt</button></div>`;
@@ -2916,6 +3209,7 @@
   }
   function startTrials(ids) {
     save.activeTrials = ids.slice();
+    track("trial", { op: "start", ids: ids.slice() });
     save.trialPending = false;
     // the souls 継承の礎 just granted come from the panel, which a 苦難 seals: held back until it ends
     save.trialHeldPoints = save.points;
@@ -2940,6 +3234,7 @@
     const defs = activeTrialDefs();
     if (!defs.length) return;
     if (!(await showConfirm(`苦難（${defs.map((t) => t.name).join("・")}）を放棄します。報酬は得られず、転生パネルの封印が解けます。よろしいですか?`))) return;
+    track("trial", { op: "abandon", ids: defs.map((t) => t.id) });
     save.activeTrials = [];
     releaseHeldPoints();
     persistSave();
@@ -3145,15 +3440,15 @@
         svg.appendChild(line);
       });
     });
-    PANEL_SPECIALS.forEach((special, i) => {
-      const from = i === 0 ? PANEL_POS.core : PANEL_POS[PANEL_SPECIALS[i - 1].id];
+    [...PANEL_SPECIALS, PANEL_MARK].forEach((special, i, list) => {
+      const from = i === 0 ? PANEL_POS.core : PANEL_POS[list[i - 1].id];
       const to = PANEL_POS[special.id];
       const line = document.createElementNS(svgNS, "line");
       line.setAttribute("x1", from.x);
       line.setAttribute("y1", from.y);
       line.setAttribute("x2", to.x);
       line.setAttribute("y2", to.y);
-      if (panelSpecialOwned(special)) line.setAttribute("class", "active");
+      if (special === PANEL_MARK ? markLevelRaw() > 0 : panelSpecialOwned(special)) line.setAttribute("class", "active");
       svg.appendChild(line);
     });
     PANEL_CHAINS.forEach((chain) => chain.nodeIds.forEach((id, i) => {
@@ -3232,6 +3527,28 @@
       }
       el.panelMap.appendChild(div);
     });
+    {
+      const pos = PANEL_POS[PANEL_MARK.id];
+      const state = markState();
+      const div = document.createElement("div");
+      div.className = "tree-map-node panel-special panel-mark " + state;
+      div.style.left = pos.x + "px";
+      div.style.top = pos.y + "px";
+      const lv = markLevelRaw();
+      div.innerHTML = `<div class="tn-name">${PANEL_MARK.label} Lv.${lv}</div><div class="tn-desc">全ダメージ ×${PANEL_MARK.step}（何度でも・現在 ×${fmtMult(Math.pow(PANEL_MARK.step, lv))}）</div>`
+        + `<div class="tn-cost">${state === "locked" ? "特殊強化を全て習得で解放" : lv >= PANEL_MARK.maxLevel ? "最大" : fmt(markCost()) + "pt"}</div>`;
+      if (state === "available") {
+        div.addEventListener("click", () => {
+          if (markState() !== "available") return;
+          save.transcendPoints -= markCost();
+          save.panelLevels[PANEL_MARK.id] = lv + 1;
+          checkAchievements();
+          persistSave();
+          renderPanel();
+        });
+      }
+      el.panelMap.appendChild(div);
+    }
 
     PANEL_CHAINS.forEach((chain) => chain.nodeIds.forEach((id, i) => {
       const tier = i + 1;
@@ -3859,16 +4176,98 @@
     document.addEventListener("pointerdown", () => tip.remove(), { once: true, capture: true });
   }
 
+
+  // ---------------- 倍率の内訳 (tap 倍率 in battle) ----------------
+  // every number comes from the same functions the damage itself uses, so what's listed is what's dealt
+  function damageBreakdown() {
+    const x = (v) => "×" + fmtMult(v);
+    const plus = (v) => "+" + fmtMult(v);
+    const sections = [];
+    const flatRun = game.runAtkBonus || 0;
+    const atkRows = [["基本", fmtMult(BASE_ATK)], ["基本強化", plus(treeBonus("atk"))], ["継承の力", plus(panelBonus("atk"))]];
+    if (flatRun) atkRows.push(["このランの秘薬", plus(flatRun)]);
+    atkRows.push(
+      ["実績", plus(achievementBonus("atkPct")) + "%"],
+      ["苦難の報酬", plus(trialRewardSum("atkPct")) + "%"],
+      ["闘志の秘薬", plus(game.runAtkPctBonus || 0) + "%"],
+      ["魂の鍛錬", x(treeExtProduct("atkMult"))],
+    );
+    if (trialRule("atkMult", 1) !== 1) atkRows.push(["苦難の制限", x(trialRule("atkMult", 1))]);
+    sections.push({ title: "基礎攻撃力", total: fmt(currentAtk()), rows: atkRows, note: "カードの威力に足される" });
+
+    const base = currentBaseMult() + game.buffBonus;
+    sections.push({ title: "バフ", total: x(Math.max(MIN_BUFF_MULTIPLIER, base)), rows: [["基本", fmtMult(currentBaseMult())], ["貯まっているバフ", plus(game.buffBonus)]] });
+    sections.push({
+      title: "レベル倍率", total: x(levelDamageMult()),
+      rows: trialRule("noLevel", false) ? [["苦難で無効", "×1"]] : [[`Lv.${save.level}`, `${Math.round(levelDamageMultPer() * 1000) / 1000} の ${save.level - 1} 乗`]],
+    });
+    const expRows = [["基本", "1"], ["基本強化", plus(treeBonus("exponent"))], ["継承の累乗", plus(panelBonus("exponent"))],
+      ["魂の極致", plus(treeExtBonus("exponent"))], ["神威の書き換え", plus(panelSpecialOn("panelDmgFormula") ? 0.2 : 0)],
+      ["苦難の報酬", plus(trialRewardSum("exponent"))], ["秘宝", plus(itemSum("exponent"))]];
+    sections.push({ title: "累乗", total: fmtMult(currentExponent()), rows: expRows, note: "（バフ × レベル倍率）に掛かる" });
+    sections.push({
+      title: "最終倍率", total: x(finalDamageMult()),
+      rows: [["闘気の枝", x(toukiMult())], ["魂の昇華", x(treeExtProduct("dmgMult"))], ["苦難の報酬", x(trialRewardProduct("dmgMult") / trialComboMult())],
+        ["同時挑戦ボーナス", x(trialComboMult())], ["秘宝", x(itemProduct("dmgMult"))], ["超越の刻印", x(Math.pow(PANEL_MARK.step, markLevel()))]],
+    });
+    const critOff = trialRule("noCrit", false);
+    sections.push({
+      title: "会心", total: critOff ? "出ない" : `${fmtMult(critRate())}%で ${x(critMultiplier())}`,
+      rows: [["会心率", fmtMult(critRate()) + "%"], ["会心ダメージ", plus(critDamageBonus()) + "%（基本150%に足す）"],
+        ["魂の研磨", x(treeExtProduct("critMult"))], ["苦難の報酬", x(trialRewardProduct("critMult"))], ["秘宝", x(itemProduct("critMult"))],
+        ["会心の暴走", panelSpecialOn("panelCritMultDouble") ? "×2" : "×1"]],
+    });
+    const enemy = enemyForFloor(game.floor);
+    const sit = [];
+    if (enemy.isBoss) sit.push(["ボス（巨人殺しの槌）", x(itemProduct("bossMult"))]);
+    if (!game.firstHitDone) sit.push(["この階の最初の一撃（先駆けの角笛）", x(itemProduct("firstMult"))]);
+    if (game.traits && game.traits.length) sit.push(["特性を持つ敵（破魔の護符）", x(itemProduct("traitMult"))]);
+    (game.traits || []).map(traitDef).filter(Boolean).forEach((t) => sit.push([`特性「${t.name}」`, t.desc]));
+    sections.push({ title: "その場の倍率", total: x(situationalItemMult()), rows: sit.length ? sit : [["なし", "×1"]] });
+    return {
+      formula: "ダメージ ＝（威力＋基礎攻撃力）×（バフ × レベル倍率）^累乗 × 最終倍率 × 会心 × その場の倍率",
+      next: x(damageMultiplier().mul(situationalItemMult())),
+      sections,
+    };
+  }
+  function renderBreakdown() {
+    if (!el.breakdownPanel.classList.contains("active") || !game) return;
+    const b = damageBreakdown();
+    el.breakdownBody.innerHTML = `<div class="bd-formula">${b.formula}</div><div class="bd-next">次の攻撃・特殊カードの倍率（威力＋基礎攻撃力に掛かる、会心を除く）：<b>${b.next}</b></div>`
+      + b.sections.map((sec) => `<div class="bd-sec"><div class="bd-head"><span>${sec.title}</span><b>${sec.total}</b></div>`
+        + sec.rows.map(([k, v]) => `<div class="bd-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join("")
+        + (sec.note ? `<div class="bd-note">${sec.note}</div>` : "") + `</div>`).join("");
+  }
+  function toggleBreakdown(force) {
+    const open = force != null ? force : !el.breakdownPanel.classList.contains("active");
+    el.breakdownPanel.classList.toggle("active", open);
+    if (open) renderBreakdown();
+  }
+  el.statBuff.parentElement.classList.add("bd-trigger");
+  el.statBuff.parentElement.title = "押すと倍率の内訳";
+  el.statBuff.parentElement.addEventListener("click", () => toggleBreakdown());
+  el.breakdownClose.addEventListener("click", () => toggleBreakdown(false));
+  el.breakdownPanel.addEventListener("click", (e) => { if (e.target === el.breakdownPanel) toggleBreakdown(false); });
+
   // ---------------- Auto-play (AUTO / 周回 / 速度) ----------------
   // AUTO picks and plays cards by itself, buys any 秘宝 it can afford (potions stay with 自動購入) and moves on
   // to the next floor once the merchant is done. 周回 (after the first final-boss kill) also retries from the
   // same checkpoint after a defeat and walks into endless mode after the boss. 速度 divides every battle
-  // timing (card use, kill pause, remnant flurry, card flips, damage numbers) by ×1/×2 (×4 after the first
-  // final-boss kill). It pauses while the tab is hidden: hidden time is already paid by the idle income.
-  const AUTO_PLAY_GAP_MS = 140; // a beat between auto-played cards, so a turn still reads card by card
+  // timing (card use, kill pause, remnant flurry, card flips, damage numbers): ×2 opens with the first final-boss
+  // kill, ×4 with 500F cleared -- speed is a reward of progress, so AUTO alone doesn't shrink the early game.
+  // It pauses while the tab is hidden: hidden time is already paid by the idle income.
+  // AUTO at ×1 plays about one card per 0.6s (0.16s card animation + this gap), roughly a person's pace: at 0.3s it
+  // ran ~5× faster than playing by hand and cut the time to the first clear to a fraction
+  const AUTO_PLAY_GAP_MS = 440;
   const AUTO_NEXT_FLOOR_MS = 650; // how long the merchant screen stays up before AUTO moves on
   const AUTO_RETRY_MS = 1400; // 周回: the defeat/victory screen stays this long before going again
-  function autoSpeeds() { return save.transcendUnlocked ? [1, 2, 4] : [1, 2]; }
+  const SPEED_4_FLOOR = 500;
+  function autoSpeeds() {
+    const list = [1];
+    if (save.transcendUnlocked) list.push(2);
+    if (stat("maxCleared") >= SPEED_4_FLOOR) list.push(4);
+    return list;
+  }
   function gameSpeed() {
     const sp = save.autoPlay && save.autoPlay.speed;
     return autoSpeeds().includes(sp) ? sp : 1;
@@ -3894,32 +4293,43 @@
     if (trialRule("noCrit", false)) rate = 0;
     if (card.forceCrit) rate = 100;
     const base = mult.mul(raw);
-    return { sure: rate >= 100 ? base.mul(cm) : base, avg: base.mul(1 + (rate / 100) * (cm - 1)) };
+    // 特性: 幻影 swallows the floor's first hit, 鉄壁 cuts non-crits, 硬化 caps every hit
+    if (hasTrait("phantom") && !game.phantomUsed) return { sure: new Decimal(0), avg: new Decimal(0), raw: base };
+    const p = rate / 100;
+    const nonCrit = applyTraitsToHit(roundDamage(base), false);
+    const crit = applyTraitsToHit(roundDamage(base.mul(cm)), true);
+    return { sure: rate >= 100 ? crit : nonCrit, avg: nonCrit.mul(1 - p).add(crit.mul(p)), raw: base };
   }
   function autoBuffValue(card) {
     const vals = card.randomValues ? card.randomValues : [effectiveValue(card)];
     return vals.reduce((a, v) => a + buffApplied(v), 0) / vals.length;
   }
-  // 1) a damage card that surely kills now  2) 処刑の火 (never wastes a stored buff)  3) poison while there are
-  // moves left for it to tick  4) buffs while a damage card is in hand and a move remains for it
-  // 5) otherwise the damage card with the best average
+  // 1) 幻影: throw the weakest damage card at it first (before any buff is stored for nothing)
+  // 2) a damage card that surely kills now  3) 処刑の火 (never wastes a stored buff)  4) poison while there are moves
+  // left for it to tick  5) buffs while a damage card is in hand and a move remains for it -- unless 硬化 caps the hit
+  // anyway  6) otherwise the damage card with the best average. Under 鏡面, 処刑の火/猛毒 only when nothing else is left
   function chooseAutoCard() {
     const hand = game.hand.filter((c) => !c.playing && !(c.type === "percent" && game.percentUsed));
     if (!hand.length) return null;
     const dmgCards = hand.filter((c) => c.type === "attack" || c.type === "special")
       .map((c) => Object.assign({ card: c }, autoCardDamage(c)))
       .sort((a, b) => (b.avg.gt(a.avg) ? 1 : b.avg.lt(a.avg) ? -1 : 0));
+    if (hasTrait("phantom") && !game.phantomUsed && dmgCards.length) {
+      return dmgCards.slice().sort((a, b) => (a.raw.lt(b.raw) ? -1 : a.raw.gt(b.raw) ? 1 : 0))[0].card;
+    }
     const killer = dmgCards.filter((d) => d.sure.gte(game.enemyHp)).sort((a, b) => (a.sure.lt(b.sure) ? -1 : 1))[0];
     if (killer) return killer.card;
-    const pct = hand.find((c) => c.type === "percent");
+    const mirror = hasTrait("mirror");
+    const pct = !mirror && hand.find((c) => c.type === "percent");
     if (pct) return pct;
-    const poison = hand.find((c) => c.type === "poison");
+    const poison = !mirror && hand.find((c) => c.type === "poison");
     if (poison && !game.enemyPoisoned && game.n >= 3) return poison;
+    const capped = hasTrait("harden") && dmgCards.length && dmgCards[0].sure.gte(game.enemyHpMax.mul(TRAIT_HIT_CAP).ceil());
     const buffs = hand.filter((c) => c.type === "buff" && autoBuffValue(c) > 1).sort((a, b) => autoBuffValue(b) - autoBuffValue(a));
-    if (buffs.length && dmgCards.length && game.n >= 2) return buffs[0];
+    if (buffs.length && dmgCards.length && game.n >= 2 && !capped) return buffs[0];
     if (dmgCards.length) return dmgCards[0].card;
     const chain = hand.find((c) => c.type === "chain");
-    return chain || hand.find((c) => c.type !== "buff" && c.type !== "poison") || hand[0];
+    return chain || hand.find((c) => c.type !== "buff" && c.type !== "poison" && c.type !== "percent") || hand.find((c) => c.type !== "buff") || hand[0];
   }
 
   let autoTimer = null;
@@ -3947,7 +4357,7 @@
       autoWait = { screen: "battle", until: 0 };
       if (game.followUpBusy || performance.now() < game.inputReadyAt || game.hand.some((c) => c.playing)) { scheduleAuto(30); return; }
       const card = chooseAutoCard();
-      if (card) playCard(card.uid);
+      if (card) { card.byAuto = true; playCard(card.uid); }
       scheduleAuto(spd(CARD_PLAY_ANIM_MS + AUTO_PLAY_GAP_MS));
       return;
     }
@@ -3973,11 +4383,14 @@
     scheduleAuto(300); // title, tree, … : AUTO stays armed and picks up again in the next battle
   }
   function renderAutoControls() {
+    applyGameSpeed(); // a saved ×4 starts counting the moment 500F is cleared
     el.autoPlayBtn.classList.toggle("on", !!save.autoPlay.on);
     el.autoLoopBtn.style.display = autoLoopUnlocked() ? "" : "none";
     el.autoLoopBtn.classList.toggle("on", autoLoopOn());
     el.speedBtn.firstChild.textContent = "×" + gameSpeed();
     el.speedBtn.classList.toggle("on", gameSpeed() > 1);
+    const next = autoSpeeds().includes(4) ? "" : autoSpeeds().includes(2) ? "（×4は500階クリアで解放）" : "（×2はラスボス初撃破、×4は500階クリアで解放）";
+    el.speedBtn.title = "戦闘の演出の速さ [S]" + next;
     renderAutoNotes();
   }
   function renderAutoNotes() {
@@ -3993,6 +4406,7 @@
   }
   function setAutoPlay(on) {
     save.autoPlay.on = on;
+    track("auto", { on, loop: save.autoPlay.loop, speed: gameSpeed() });
     persistSave();
     renderAutoControls();
     if (on) scheduleAuto(spd(AUTO_PLAY_GAP_MS));
@@ -4010,6 +4424,7 @@
   }
   function cycleSpeed() {
     const list = autoSpeeds();
+    if (list.length === 1) { showToast("速度×2はラスボスを初めて倒すと、×4は500階をクリアすると使える"); return; }
     save.autoPlay.speed = list[(list.indexOf(gameSpeed()) + 1) % list.length];
     persistSave();
     applyGameSpeed();
@@ -4021,6 +4436,402 @@
   document.addEventListener("click", (e) => {
     if (e.target.closest && e.target.closest("[data-auto-stop]")) setAutoPlay(false);
   });
+
+  // ---------------- データ管理: local backup, cloud transfer (引き継ぎ), play data ----------------
+  // The game always runs on the save in localStorage; every network call here is best-effort and silently gives up.
+  // The server (api/ next to the game on Vercel, Upstash Redis behind it) is never used from localhost or ?debug=1,
+  // so test and debug play can't end up in the real data -- ?net=1 turns it on locally against the dev server.
+  const GAME_VERSION = "2026.10-v5";
+  const API_BASE = "api";
+  const NETWORK_ENABLED = !DEBUG_MODE && (!LOCAL_ORIGIN || new URLSearchParams(location.search).get("net") === "1");
+  const API_TIMEOUT_MS = 10000;
+  const KEEPALIVE_LIMIT = 60000; // keepalive fetch / sendBeacon bodies over ~64KB are dropped by the browser
+  function readJson(key) {
+    try { const v = JSON.parse(localStorage.getItem(key) || "null"); return v && typeof v === "object" ? v : null; } catch (e) { return null; }
+  }
+  function writeJson(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+  function randomHex(bytes) {
+    const a = new Uint8Array(bytes);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a);
+    else for (let i = 0; i < bytes; i++) a[i] = Math.floor(Math.random() * 256);
+    return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function apiRequest(path, body, opts) {
+    const o = opts || {};
+    let timer = null;
+    try {
+      const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+      if (ctrl) timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+      const res = await fetch(API_BASE + path, {
+        method: body ? "POST" : "GET",
+        headers: body ? { "content-type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+        keepalive: !!o.keepalive,
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      let data = null;
+      try { data = await res.json(); } catch (e) { /* empty or not JSON */ }
+      return { status: res.status, data: data || {} };
+    } catch (e) {
+      return { status: 0, data: { error: "offline" } };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+  // "ok" / "nodb" (deployed without the database) / "offline" / "disabled" (localhost, debug)
+  let serverState = NETWORK_ENABLED ? "unknown" : "disabled";
+  async function checkServer() {
+    if (!NETWORK_ENABLED) return serverState;
+    const r = await apiRequest("/health");
+    serverState = r.status === 200 ? (r.data.db ? "ok" : "nodb") : "offline";
+    return serverState;
+  }
+
+  // ---- 端末内の控え: "MT2:" + base64(UTF-8 JSON). Plain JSON is accepted too ----
+  const SAVE_TEXT_MAX = 1024 * 1024;
+  function encodeSaveText(obj) {
+    const bytes = new TextEncoder().encode(JSON.stringify(obj));
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return "MT2:" + btoa(bin);
+  }
+  function decodeSaveText(text) {
+    const t = String(text || "").trim();
+    if (!t || t.length > SAVE_TEXT_MAX) throw new Error("size");
+    let json;
+    if (t.startsWith("MT2:")) {
+      const bin = atob(t.slice(4).replace(/\s+/g, ""));
+      json = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+    } else json = t;
+    const obj = JSON.parse(json);
+    if (!obj || typeof obj !== "object" || Array.isArray(obj) || !("level" in obj || "points" in obj || "unlockedNodes" in obj)) throw new Error("shape");
+    return obj;
+  }
+  function saveSummary(obj) {
+    const s = obj || {};
+    const st = s.stats || {};
+    return `Lv.${toInt(s.level, 1, 1e8, 1)}・最高クリア ${toInt(st.maxCleared, 0, 1e9, 0)}階・転生 ${toInt(st.reincarnations, 0, 1e9, 0)}回`;
+  }
+  // overwrites this device's save and reloads, the same way the reset does (wipingSave keeps pagehide from
+  // writing the old save back). lastSeen is set to now: another device's clock must not pay idle income or
+  // trip 時を遡る者
+  function replaceSaveAndReload(obj, cloudCreds) {
+    const next = Object.assign({}, obj, { lastSeen: Date.now() });
+    wipingSave = true;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (cloudCreds) writeJson(CLOUD_KEY, cloudCreds);
+    location.reload();
+  }
+  async function importSaveText(text) {
+    let obj;
+    try { obj = decodeSaveText(text); } catch (e) { showToast("読み込めない形式です（書き出した文字列かファイルを使ってください）"); return; }
+    const cloudNote = cloud.creds && cloud.creds.code ? "\n※引き継ぎを設定しているので、この内容が次の自動保存でクラウドにも保存されます。" : "";
+    if (!(await showConfirm(`この端末のセーブを、読み込んだセーブ（${saveSummary(obj)}）で上書きします。今のセーブは元に戻せません。よろしいですか?${cloudNote}`))) return;
+    replaceSaveAndReload(obj);
+  }
+  function exportStamp() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+  function downloadText(filename, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type: type || "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function currentSaveText() { persistSave(); return encodeSaveText(JSON.parse(localStorage.getItem(STORAGE_KEY) || JSON.stringify(save))); }
+
+  // ---- クラウドセーブ（引き継ぎコード＋パスワード）. Kept apart from the save, so a shared backup never leaks them ----
+  const CLOUD_KEY = "magiaTower.cloud.v1";
+  const CLOUD_UPLOAD_MS = 10 * 60 * 1000;
+  const cloud = { creds: readJson(CLOUD_KEY), busy: false, showPassword: false };
+  function cloudCredsWrite() { writeJson(CLOUD_KEY, cloud.creds); }
+  function normalizeCode(v) {
+    const raw = String(v || "").toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/^MT/, "");
+    return raw.length === 8 ? `MT-${raw.slice(0, 4)}-${raw.slice(4)}` : "";
+  }
+  // lastSeen changes every minute; leave it out so an unchanged save isn't sent again
+  function saveFingerprint(text) {
+    const t = text.replace(/"lastSeen":\d+/, "");
+    let h = 0;
+    for (let i = 0; i < t.length; i++) h = (Math.imul(h, 31) + t.charCodeAt(i)) | 0;
+    return t.length + ":" + h;
+  }
+  function cloudErrorText(r) {
+    if (r.status === 0) return "サーバーに接続できない";
+    if (r.status === 401) return "コードかパスワードが違う";
+    if (r.status === 404) return "そのコードのデータが無い";
+    if (r.status === 409) return "別の端末に引き継がれた";
+    if (r.status === 413) return "セーブが大きすぎる";
+    if (r.status === 429) return "試行が多すぎる（しばらく待ってから）";
+    if (r.status === 503) return "サーバーが準備中か、無料枠を使い切った";
+    return (r.data && r.data.error) || "エラー " + r.status;
+  }
+  async function cloudUpload(opts) {
+    const o = opts || {};
+    const c = cloud.creds;
+    if (!NETWORK_ENABLED || !c || !c.code || c.superseded || cloud.busy) return false;
+    persistSave(); // send exactly what localStorage holds
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return false;
+    const fp = saveFingerprint(data);
+    if (!o.force && fp === c.lastHash) return true;
+    if (o.keepalive && data.length > KEEPALIVE_LIMIT) return false;
+    const body = { op: "save", code: c.code, password: c.password, generation: c.generation, data,
+      meta: { level: save.level, best: stat("maxCleared"), reinc: stat("reincarnations"), version: GAME_VERSION } };
+    if (o.keepalive) { apiRequest("/cloud", body, { keepalive: true }); return true; }
+    cloud.busy = true;
+    try {
+      const r = await apiRequest("/cloud", body);
+      if (r.status === 200) Object.assign(c, { lastUploadAt: Date.now(), lastHash: fp, lastError: "", generation: r.data.generation || c.generation });
+      else if (r.status === 409) Object.assign(c, { superseded: true, lastError: cloudErrorText(r) });
+      else c.lastError = cloudErrorText(r);
+      cloudCredsWrite();
+      return r.status === 200;
+    } finally {
+      cloud.busy = false;
+      renderDataScreen();
+    }
+  }
+  async function cloudRegister() {
+    if (cloud.busy) return;
+    cloud.busy = true;
+    const r = await apiRequest("/cloud", { op: "register" });
+    cloud.busy = false;
+    if (r.status !== 200 || !r.data.code) { showToast("引き継ぎを設定できなかった：" + cloudErrorText(r)); renderDataScreen(); return; }
+    cloud.creds = { code: r.data.code, password: r.data.password, generation: r.data.generation || 1, ack: false };
+    cloud.showPassword = true;
+    cloudCredsWrite();
+    await cloudUpload({ force: true });
+    renderDataScreen();
+  }
+  async function cloudRestore(code, password, previous) {
+    const c = normalizeCode(code);
+    const pw = String(password || "").trim().toUpperCase();
+    if (!c || pw.length < 6) { showToast("引き継ぎコード（MT-XXXX-XXXX）とパスワードを入れてください"); return; }
+    const info = await apiRequest("/cloud", { op: "info", code: c, password: pw });
+    if (info.status !== 200) { showToast("復元できない：" + cloudErrorText(info)); return; }
+    const slot = previous ? info.data.previous : info.data.latest;
+    if (!slot) { showToast(previous ? "1つ前の保存が無い" : "保存されたデータが無い"); return; }
+    const when = new Date(slot.updatedAt).toLocaleString("ja-JP");
+    const meta = slot.meta || {};
+    if (!(await showConfirm(`この端末のセーブを、クラウドのセーブ（${when} 保存・Lv.${meta.level || "?"}・最高クリア ${meta.best || 0}階）で上書きします。今のセーブは元に戻せません。\n復元すると、このコードの保存は今後この端末から行われ、ほかの端末からの保存は止まります。よろしいですか?`))) return;
+    const r = await apiRequest("/cloud", { op: "restore", code: c, password: pw, slot: previous ? "previous" : "latest" });
+    if (r.status !== 200) { showToast("復元できない：" + cloudErrorText(r)); return; }
+    let obj;
+    try { obj = decodeSaveText(r.data.data); } catch (e) { showToast("クラウドのデータが壊れている"); return; }
+    replaceSaveAndReload(obj, { code: c, password: pw, generation: r.data.generation, ack: true, lastHash: "" });
+  }
+  async function cloudTakeover() {
+    const c = cloud.creds;
+    if (!c) return;
+    if (!(await showConfirm("この端末の今のセーブで、クラウドのセーブを上書きします。ほかの端末で進めた分はクラウドから消え、ほかの端末からの保存は止まります。よろしいですか?"))) return;
+    const r = await apiRequest("/cloud", { op: "takeover", code: c.code, password: c.password });
+    if (r.status !== 200) { showToast("できなかった：" + cloudErrorText(r)); return; }
+    Object.assign(c, { generation: r.data.generation, superseded: false, lastError: "", lastHash: "" });
+    cloudCredsWrite();
+    await cloudUpload({ force: true });
+  }
+  async function cloudDelete() {
+    const c = cloud.creds;
+    if (!c) return;
+    if (!(await showConfirm(`クラウドに保存したセーブ（${c.code}）を削除し、この端末の引き継ぎ設定も消します。この端末のセーブはそのまま残ります。よろしいですか?`))) return;
+    const r = await apiRequest("/cloud", { op: "delete", code: c.code, password: c.password });
+    if (r.status !== 200 && r.status !== 404) { showToast("削除できなかった：" + cloudErrorText(r)); return; }
+    cloud.creds = null;
+    try { localStorage.removeItem(CLOUD_KEY); } catch (e) { /* ignore */ }
+    showToast("クラウドのセーブを削除した");
+    renderDataScreen();
+  }
+
+  // ---- プレイ情報: asked once, queued on the device, sent in batches (never from localhost / debug) ----
+  const TELEMETRY_KEY = "magiaTower.telemetry.v1";
+  const TELEMETRY_FLUSH_MS = 5 * 60 * 1000;
+  const TELEMETRY_QUEUE_MAX = 500;
+  const TELEMETRY_BATCH_MAX = 50;
+  const telemetryStored = readJson(TELEMETRY_KEY) || {};
+  const telemetry = {
+    consent: typeof telemetryStored.consent === "boolean" ? telemetryStored.consent : null,
+    anonId: typeof telemetryStored.anonId === "string" ? telemetryStored.anonId : "",
+    queue: Array.isArray(telemetryStored.queue) ? telemetryStored.queue.slice(-TELEMETRY_QUEUE_MAX) : [],
+    sending: false,
+  };
+  const telemetrySessionId = randomHex(8);
+  function telemetryWrite() { writeJson(TELEMETRY_KEY, { consent: telemetry.consent, anonId: telemetry.anonId, queue: telemetry.queue }); }
+  function telemetryOn() { return NETWORK_ENABLED && telemetry.consent === true; }
+  function playMinutes() { return Math.round(stat("playMs") / 60000); }
+  function track(type, data) {
+    if (!telemetryOn()) return;
+    telemetry.queue.push({ t: Date.now(), type, d: data || {} });
+    if (telemetry.queue.length > TELEMETRY_QUEUE_MAX) telemetry.queue.splice(0, telemetry.queue.length - TELEMETRY_QUEUE_MAX);
+    telemetryWrite();
+  }
+  async function flushTelemetry(keepalive) {
+    if (!telemetryOn() || !telemetry.queue.length || telemetry.sending) return;
+    if (!telemetry.anonId) telemetry.anonId = randomHex(16);
+    const batch = telemetry.queue.slice(0, TELEMETRY_BATCH_MAX);
+    const body = { op: "send", anonId: telemetry.anonId, sessionId: telemetrySessionId, version: GAME_VERSION, events: batch };
+    if (keepalive) {
+      const text = JSON.stringify(body);
+      if (text.length > KEEPALIVE_LIMIT || !navigator.sendBeacon) return;
+      // handed to the browser: drop them now, there is no answer to wait for
+      if (navigator.sendBeacon(API_BASE + "/telemetry", new Blob([text], { type: "application/json" }))) {
+        telemetry.queue.splice(0, batch.length);
+        telemetryWrite();
+      }
+      return;
+    }
+    telemetry.sending = true;
+    try {
+      const r = await apiRequest("/telemetry", body);
+      // 400 = the server will never take this batch (malformed): drop it rather than retry forever
+      if (r.status === 200 || r.status === 204 || r.status === 400) telemetry.queue.splice(0, batch.length);
+    } finally {
+      telemetry.sending = false;
+      telemetryWrite();
+    }
+  }
+  function setTelemetryConsent(on) {
+    telemetry.consent = !!on;
+    if (!on) telemetry.queue = [];
+    telemetryWrite();
+    if (on) trackSession();
+  }
+  async function deleteTelemetry() {
+    if (!(await showConfirm("この端末から送ったプレイ情報を、サーバーから削除します。よろしいですか?"))) return;
+    telemetry.queue = [];
+    if (telemetry.anonId && NETWORK_ENABLED) {
+      const r = await apiRequest("/telemetry", { op: "delete", anonId: telemetry.anonId });
+      if (r.status !== 200) { showToast("削除できなかった：" + cloudErrorText(r)); telemetryWrite(); return; }
+    }
+    telemetry.anonId = ""; // a fresh id from now on, unconnected to what was deleted
+    telemetryWrite();
+    showToast("送ったプレイ情報を削除した");
+  }
+  function trackSession() {
+    track("session", {
+      device: window.innerWidth < 760 ? "sp" : "pc", playMin: playMinutes(), lv: save.level, best: stat("maxCleared"),
+      reinc: stat("reincarnations"), auto: save.autoPlay.on, loop: save.autoPlay.loop, speed: gameSpeed(),
+    });
+  }
+  function trackRunEnd(cause) {
+    if (!game) return;
+    const cards = game.cardsPlayed || 0;
+    track("run_end", {
+      start: game.startFloor, end: game.floor, cleared: game.floorsCleared || 0, cause,
+      sec: Math.round((performance.now() - (game.runStartedAt || performance.now())) / 1000), cards,
+      autoShare: cards ? Math.round(((game.autoCardsPlayed || 0) / cards) * 100) / 100 : 0,
+      lv: save.level, trials: save.activeTrials.slice(), playMin: playMinutes(),
+    });
+    setTimeout(() => flushTelemetry(false), 3000);
+  }
+
+  // ---- データ管理 screen ----
+  const dataEl = {
+    overlay: document.getElementById("dataOverlay"),
+    close: document.getElementById("dataCloseBtn"),
+    cloudBody: document.getElementById("cloudBody"),
+    restoreBox: document.getElementById("cloudRestoreBox"),
+    codeInput: document.getElementById("cloudCodeInput"),
+    passInput: document.getElementById("cloudPassInput"),
+    prevInput: document.getElementById("cloudPrevInput"),
+    restoreBtn: document.getElementById("cloudRestoreBtn"),
+    exportFile: document.getElementById("exportFileBtn"),
+    exportCopy: document.getElementById("exportCopyBtn"),
+    importText: document.getElementById("importText"),
+    importTextBtn: document.getElementById("importTextBtn"),
+    importFile: document.getElementById("importFile"),
+    telemetryToggle: document.getElementById("telemetryToggle"),
+    telemetryNote: document.getElementById("telemetryNote"),
+    telemetryDelete: document.getElementById("telemetryDeleteBtn"),
+    consent: document.getElementById("consentOverlay"),
+  };
+  function dataScreenOpen() { return dataEl.overlay.classList.contains("active"); }
+  function renderDataScreen() {
+    if (!dataScreenOpen()) return;
+    const c = cloud.creds;
+    let html = "";
+    const net = NETWORK_ENABLED;
+    if (!net) html = `<div class="cloud-status">この環境（ローカル・デバッグ）ではサーバーを使わない。公開版で使える。</div>`;
+    else if (serverState === "unknown") html = `<div class="cloud-status">サーバーを確認中…</div>`;
+    else if (serverState === "offline") html = `<div class="cloud-status warn">サーバーに接続できない。通信を確認して、もう一度開いてください。</div>`;
+    else if (serverState === "nodb") html = `<div class="cloud-status">クラウド機能は準備中（サーバーにデータベースがまだ接続されていない）。</div>`;
+    else if (!c) {
+      html = `<div class="cloud-status">引き継ぎを設定すると、このセーブがクラウドに自動で保存され（10分ごと・転生したとき・閉じるとき）、
+        別の端末やデータが消えたときに、引き継ぎコードとパスワードで復元できる。</div>
+        <div class="data-row"><button class="btn primary" data-cloud="register"${cloud.busy ? " disabled" : ""}>引き継ぎを設定する</button></div>`;
+    } else {
+      const pw = cloud.showPassword ? escapeHtml(c.password) : "••••••••••";
+      const last = c.lastUploadAt ? new Date(c.lastUploadAt).toLocaleString("ja-JP") : "まだ";
+      html = `<div class="cloud-cred"><span class="k">引き継ぎコード</span><span class="v">${escapeHtml(c.code)}</span>
+          <span class="k">パスワード</span><span class="v">${pw}</span></div>
+        <div class="data-row"><button class="btn ghost" data-cloud="togglePw">${cloud.showPassword ? "パスワードを隠す" : "パスワードを表示"}</button></div>`
+        + (c.ack ? "" : `<label class="data-inline cloud-ack warn"><input type="checkbox" data-cloud="ack"> コードとパスワードを控えた（控えないと、データが消えたときに戻せない）</label>`)
+        + `<div class="cloud-status">最後にクラウドへ保存：${escapeHtml(last)}${c.lastError ? `<br><span class="warn">前回の保存：${escapeHtml(c.lastError)}</span>` : ""}</div>`
+        + (c.superseded
+          ? `<div class="cloud-status warn">このコードは別の端末で復元されたため、この端末からの自動保存は止まっている。</div>
+             <div class="data-row"><button class="btn secondary" data-cloud="takeover">この端末の内容でクラウドを上書きする</button></div>`
+          : `<div class="data-row"><button class="btn secondary" data-cloud="upload"${cloud.busy ? " disabled" : ""}>今すぐ保存</button></div>`)
+        + `<div class="data-row"><button class="btn ghost" data-cloud="restoreOwn">クラウドから復元</button><button class="btn ghost" data-cloud="delete">クラウドのデータを削除</button></div>`;
+    }
+    dataEl.cloudBody.innerHTML = html;
+    dataEl.restoreBox.style.display = net && serverState === "ok" ? "" : "none";
+    dataEl.telemetryToggle.checked = telemetry.consent === true;
+    dataEl.telemetryToggle.disabled = !net;
+    dataEl.telemetryDelete.disabled = !net || !telemetry.anonId;
+    dataEl.telemetryNote.textContent = !net ? "この環境（ローカル・デバッグ）では送らない。"
+      : telemetry.consent === true ? `送信待ち ${telemetry.queue.length}件（5分ごと・ランの終わり・閉じるときにまとめて送る）`
+      : "送っていない。";
+  }
+  async function openDataScreen() {
+    dataEl.overlay.classList.add("active");
+    renderDataScreen();
+    if (NETWORK_ENABLED) { await checkServer(); renderDataScreen(); }
+  }
+  function closeDataScreen() {
+    if (cloud.creds && !cloud.creds.ack) { showToast("引き継ぎコードとパスワードを控えて、「控えた」にチェックしてください"); return; }
+    dataEl.overlay.classList.remove("active");
+  }
+  el.openDataBtn.addEventListener("click", openDataScreen);
+  dataEl.close.addEventListener("click", closeDataScreen);
+  dataEl.overlay.addEventListener("click", (e) => { if (e.target === dataEl.overlay) closeDataScreen(); });
+  dataEl.cloudBody.addEventListener("click", (e) => {
+    const t = e.target.closest ? e.target.closest("[data-cloud]") : null;
+    if (!t) return;
+    const op = t.dataset.cloud;
+    if (op === "register") cloudRegister();
+    else if (op === "togglePw") { cloud.showPassword = !cloud.showPassword; renderDataScreen(); }
+    else if (op === "ack") { cloud.creds.ack = t.checked; cloudCredsWrite(); setTimeout(renderDataScreen, 0); }
+    else if (op === "upload") cloudUpload({ force: true }).then((ok) => showToast(ok ? "クラウドに保存した" : "保存できなかった"));
+    else if (op === "takeover") cloudTakeover();
+    else if (op === "restoreOwn") cloudRestore(cloud.creds.code, cloud.creds.password, false);
+    else if (op === "delete") cloudDelete();
+  });
+  dataEl.restoreBtn.addEventListener("click", () => cloudRestore(dataEl.codeInput.value, dataEl.passInput.value, dataEl.prevInput.checked));
+  dataEl.exportFile.addEventListener("click", () => { downloadText(`magia-tower-save-${exportStamp()}.txt`, currentSaveText()); showToast("セーブをファイルに保存した"); });
+  dataEl.exportCopy.addEventListener("click", () => {
+    const text = currentSaveText();
+    const fallback = () => { dataEl.importText.value = text; dataEl.importText.select(); showToast("下の欄に書き出した。選択された文字列をコピーしてください"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => showToast("セーブの文字列をコピーした"), fallback);
+    else fallback();
+  });
+  dataEl.importTextBtn.addEventListener("click", () => importSaveText(dataEl.importText.value));
+  dataEl.importFile.addEventListener("change", () => {
+    const f = dataEl.importFile.files && dataEl.importFile.files[0];
+    dataEl.importFile.value = "";
+    if (!f) return;
+    if (f.size > SAVE_TEXT_MAX) { showToast("ファイルが大きすぎる"); return; }
+    f.text().then(importSaveText, () => showToast("ファイルを読めなかった"));
+  });
+  dataEl.telemetryToggle.addEventListener("change", () => { setTelemetryConsent(dataEl.telemetryToggle.checked); renderDataScreen(); });
+  dataEl.telemetryDelete.addEventListener("click", () => deleteTelemetry().then(renderDataScreen));
+  document.getElementById("consentYesBtn").addEventListener("click", () => { dataEl.consent.classList.remove("active"); setTelemetryConsent(true); renderDataScreen(); });
+  document.getElementById("consentNoBtn").addEventListener("click", () => { dataEl.consent.classList.remove("active"); setTelemetryConsent(false); renderDataScreen(); });
 
   // ---------------- Keyboard (tempo) ----------------
   // battle: 1-9 play the hand from the left / shop: Enter = next floor / defeat・retreat: Enter = retry
@@ -4201,6 +5012,7 @@
   }
 
   // ---------------- Init ----------------
+  clampSaveToDefinitions();
   applyGameSpeed();
   if (save.autoPlay.on) scheduleAuto(300);
   showScreen("home");
@@ -4211,6 +5023,20 @@
     if (trialsUnlockedCount() > 0) openTrials();
     else { save.trialPending = false; persistSave(); }
   }
+  if (brokenSaveKept) showToast("セーブを読み込めなかったため、新しく始めた。元のデータは端末内に退避してある（magiaTower.save.v2.broken）");
+  // play data: asked once; a session note when it's on
+  if (NETWORK_ENABLED && telemetry.consent === null) dataEl.consent.classList.add("active");
+  else trackSession();
+  if (NETWORK_ENABLED && (cloud.creds || telemetryOn())) checkServer();
+  // visible play time (stats.playMs): feeds the play data's "how long until …" numbers
+  let playTickAt = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    if (document.visibilityState === "visible") bumpStat("playMs", Math.max(0, Math.min(60000, now - playTickAt)));
+    playTickAt = now;
+  }, 15000);
+  setInterval(() => { if (document.visibilityState === "visible") flushTelemetry(false); }, TELEMETRY_FLUSH_MS);
+  setInterval(() => { if (document.visibilityState === "visible") cloudUpload(); }, CLOUD_UPLOAD_MS);
   // while visible: just keep lastSeen fresh (so a crash/kill without pagehide pays nothing extra)
   setInterval(() => { if (document.visibilityState === "visible") settleIdle(false); }, IDLE_TICK_MS);
   // hiding stamps the time; coming back pays for the hidden stretch the same way a reload would
@@ -4225,5 +5051,9 @@
   window.addEventListener("pagehide", () => {
     if (document.visibilityState === "visible") save.lastSeen = Date.now();
     persistSave();
+    if (!wipingSave) {
+      flushTelemetry(true);
+      cloudUpload({ keepalive: true });
+    }
   });
 })();

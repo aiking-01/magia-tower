@@ -62,7 +62,7 @@
               <div class="sub">敗北すると塔から追い出されるが、倒した敵の強さに応じて力を持ち帰れる。</div>
             </div>
           </div>
-          <button class="reset-progress-btn" id="resetProgressBtn">進行状況をリセット</button>
+          <button class="reset-progress-btn" id="openDataBtn">データ管理（引き継ぎ・控え・リセット）</button>
         </div>
         <div class="home-staff" id="homeStaff" title="杖に触れる">
           <div class="staff-float">
@@ -208,6 +208,7 @@
             <div class="enemy-name" id="enemyName">見張りのモンスター</div>
             <div class="enemy-hp-num"><span id="enemyHpNow">100</span> / <span id="enemyHpMax">100</span><span class="enemy-hp-unit" id="enemyHpUnit"></span></div>
           </div>
+          <div class="enemy-traits" id="enemyTraits"></div>
           <div class="bar-track">
             <div class="bar-fill" id="enemyBar" style="width:100%"></div>
           </div>
@@ -253,6 +254,14 @@
         </div>
         <div class="deck-info">山札残り: <span id="deckCount">10</span> 枚（使用したカードは山札の下へ戻る） / 所持金 <span
             id="battleGold">0</span>G</div>
+      </div>
+    </div>
+
+    <!-- ============ 倍率の内訳 (opened from the battle screen's 倍率) ============ -->
+    <div class="modal-overlay breakdown-overlay" id="breakdownPanel">
+      <div class="modal-box breakdown-box">
+        <div class="data-head"><span>倍率の内訳</span><button class="btn ghost" id="breakdownClose">閉じる</button></div>
+        <div id="breakdownBody"></div>
       </div>
     </div>
 
@@ -396,6 +405,69 @@
         <div class="tree-screen-title">残滓スキルツリー</div>
         <div class="deck-zone-sub">全ての残滓に共通の強化。転生してもリセットされない。</div>
         <div class="rt-grid" id="remnantTreeGrid"></div>
+      </div>
+    </div>
+
+    <!-- ============ DATA (cloud transfer, local backup, play-data consent, reset) ============ -->
+    <div class="modal-overlay data-overlay" id="dataOverlay">
+      <div class="modal-box data-box" role="dialog" aria-labelledby="dataTitle">
+        <div class="data-head"><span id="dataTitle">データ管理</span><button class="btn ghost" id="dataCloseBtn">閉じる</button></div>
+
+        <section class="data-sec">
+          <h3>クラウドセーブ（引き継ぎ）</h3>
+          <div id="cloudBody"></div>
+          <details class="cloud-restore" id="cloudRestoreBox">
+            <summary>引き継ぎコードで復元する（別の端末から・データが消えたとき）</summary>
+            <div class="data-form">
+              <input type="text" id="cloudCodeInput" placeholder="引き継ぎコード（例 MT-7KQ2-9XWD）" autocomplete="off" spellcheck="false">
+              <input type="text" id="cloudPassInput" placeholder="パスワード（10文字）" autocomplete="off" spellcheck="false">
+              <label class="data-inline"><input type="checkbox" id="cloudPrevInput"> 1つ前の保存から復元する</label>
+              <button class="btn secondary" id="cloudRestoreBtn">復元する</button>
+            </div>
+          </details>
+        </section>
+
+        <section class="data-sec">
+          <h3>端末内の控え（通信なしで使える）</h3>
+          <div class="data-row">
+            <button class="btn secondary" id="exportFileBtn">ファイルに保存</button>
+            <button class="btn secondary" id="exportCopyBtn">文字列をコピー</button>
+          </div>
+          <textarea id="importText" rows="3" placeholder="書き出した文字列（MT2:…）を貼り付け" spellcheck="false"></textarea>
+          <div class="data-row">
+            <label class="btn secondary file-btn">ファイルから読み込む<input type="file" id="importFile" accept=".txt,.json,text/plain"></label>
+            <button class="btn secondary" id="importTextBtn">貼り付けた文字列を読み込む</button>
+          </div>
+        </section>
+
+        <section class="data-sec">
+          <h3>プレイ情報の送信</h3>
+          <label class="data-inline"><input type="checkbox" id="telemetryToggle"> ゲームを良くするために、プレイ情報（個人を特定しない）を送る</label>
+          <div class="data-note" id="telemetryNote"></div>
+          <div class="data-row">
+            <a class="btn ghost" href="privacy.html" target="_blank" rel="noopener">送る内容と扱い</a>
+            <button class="btn ghost" id="telemetryDeleteBtn">送ったプレイ情報を削除</button>
+          </div>
+        </section>
+
+        <section class="data-sec danger">
+          <h3>進行状況のリセット</h3>
+          <button class="btn ghost danger" id="resetProgressBtn">進行状況を全てリセットする</button>
+        </section>
+      </div>
+    </div>
+
+    <!-- ============ PLAY-DATA CONSENT (asked once) ============ -->
+    <div class="modal-overlay consent-overlay" id="consentOverlay">
+      <div class="modal-box">
+        <div class="modal-message"><b>プレイ情報の送信について</b>
+ゲームをより良くするために、プレイ情報（到達した階・かかった時間・負けた階など。名前などの個人を特定する情報は含まない）を送ってもよいですか？
+送ってもらえると、詰まりやすい場所の調整に使います。あとから「データ管理」でいつでも変えられます。</div>
+        <div class="modal-actions">
+          <button class="btn ghost" id="consentNoBtn">送らない</button>
+          <button class="btn primary" id="consentYesBtn">送る</button>
+        </div>
+        <div class="data-note"><a href="privacy.html" target="_blank" rel="noopener">送る内容と扱いの説明</a></div>
       </div>
     </div>
 

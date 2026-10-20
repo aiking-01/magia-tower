@@ -1,0 +1,20 @@
+# runs the headless tests (tools/) on every push and pull request. Vercel publishes independently of this, so a
+# failure here is a notice after the fact; the pre-push hook (tools/hooks/pre-push) is what stops a bad push.
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci || npm install --no-audit --no-fund
+      - run: npm test
